@@ -578,6 +578,115 @@ app.put('/api/knowledge/items/:uuid', (req, res) => knowledgeController.updateIt
 app.delete('/api/knowledge/items/:uuid', (req, res) => knowledgeController.deleteItem(req, res));
 
 // ============================================================================
+// MIGRATION ENDPOINTS
+// ============================================================================
+
+/**
+ * @swagger
+ * /api/migrate:
+ *   get:
+ *     summary: Run database migrations
+ *     description: Executes pending database migrations with API key authentication
+ *     tags: [System]
+ *     parameters:
+ *       - in: query
+ *         name: key
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Migration API key
+ *     responses:
+ *       200:
+ *         description: Migrations completed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 currentVersion:
+ *                   type: string
+ *                 details:
+ *                   type: object
+ *       400:
+ *         description: Bad request (missing API key or environment variables)
+ *       401:
+ *         description: Unauthorized (invalid API key)
+ *       500:
+ *         description: Internal server error
+ */
+app.get('/api/migrate', asyncHandler(async (req: any, res: any) => {
+  const { MigrationService } = await import('./services/MigrationService');
+  
+  const apiKey = req.query.key as string || req.headers['x-migration-key'] as string;
+  
+  if (!apiKey) {
+    return res.status(400).json({
+      success: false,
+      message: 'Migration API key is required',
+      error: 'MISSING_API_KEY',
+      details: {
+        usage: 'Add ?key=your-secret-key to the URL or x-migration-key header'
+      }
+    });
+  }
+
+  const result = await MigrationService.runMigrations(apiKey);
+  
+  const statusCode = result.success ? 200 : 
+    result.error === 'UNAUTHORIZED' ? 401 :
+    result.error === 'MISSING_ENV_VARS' || result.error === 'DATABASE_CONNECTION_FAILED' ? 400 : 500;
+  
+  res.status(statusCode).json(result);
+}));
+
+/**
+ * @swagger
+ * /api/migrate/status:
+ *   get:
+ *     summary: Get migration status
+ *     description: Check current migration status without running migrations
+ *     tags: [System]
+ *     parameters:
+ *       - in: query
+ *         name: key
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Migration API key
+ *     responses:
+ *       200:
+ *         description: Migration status retrieved
+ *       401:
+ *         description: Unauthorized (invalid API key)
+ *       500:
+ *         description: Internal server error
+ */
+app.get('/api/migrate/status', asyncHandler(async (req: any, res: any) => {
+  const { MigrationService } = await import('./services/MigrationService');
+  
+  const apiKey = req.query.key as string || req.headers['x-migration-key'] as string;
+  
+  if (!apiKey) {
+    return res.status(400).json({
+      success: false,
+      message: 'Migration API key is required',
+      error: 'MISSING_API_KEY'
+    });
+  }
+
+  const result = await MigrationService.getStatus(apiKey);
+  
+  const statusCode = result.success ? 200 : 
+    result.error === 'UNAUTHORIZED' ? 401 : 500;
+  
+  res.status(statusCode).json(result);
+}));
+
+// ============================================================================
 // WEBSOCKET HANDLING
 // ============================================================================
 
