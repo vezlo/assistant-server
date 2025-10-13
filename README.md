@@ -89,12 +89,22 @@ Get your Supabase credentials from:
 ```env
 # Supabase Configuration
 SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_KEY=your-service-role-key
+
+# Database Configuration for Migrations
 SUPABASE_DB_HOST=db.your-project.supabase.co
+SUPABASE_DB_PORT=5432
+SUPABASE_DB_NAME=postgres
+SUPABASE_DB_USER=postgres
 SUPABASE_DB_PASSWORD=your-database-password
 
 # OpenAI Configuration
 OPENAI_API_KEY=sk-your-api-key
+AI_MODEL=gpt-4o
+
+# Migration Security
+MIGRATION_SECRET_KEY=your-secure-migration-key-here
 ```
 
 #### 3. Setup Database Tables
@@ -151,7 +161,7 @@ Deploy to Vercel's serverless platform with one click:
 
 ### One-Click Deploy
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/vezlo/assistant-server&env=SUPABASE_URL,SUPABASE_SERVICE_KEY,SUPABASE_DB_HOST,SUPABASE_DB_PASSWORD,OPENAI_API_KEY&envDescription=Required%20environment%20variables&envLink=https://github.com/vezlo/assistant-server/blob/main/.env.vercel.example)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/vezlo/assistant-server&env=SUPABASE_URL,SUPABASE_ANON_KEY,SUPABASE_SERVICE_KEY,SUPABASE_DB_HOST,SUPABASE_DB_PORT,SUPABASE_DB_NAME,SUPABASE_DB_USER,SUPABASE_DB_PASSWORD,OPENAI_API_KEY,MIGRATION_SECRET_KEY&envDescription=Required%20environment%20variables&envLink=https://github.com/vezlo/assistant-server/blob/main/env.example)
 
 This will:
 - Fork the repository to your GitHub
@@ -189,11 +199,21 @@ SUPABASE_URL=https://your-project-id.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_KEY=your-service-role-key
 
+# REQUIRED - Database Configuration for Knex.js Migrations
+SUPABASE_DB_HOST=db.your-project.supabase.co
+SUPABASE_DB_PORT=5432
+SUPABASE_DB_NAME=postgres
+SUPABASE_DB_USER=postgres
+SUPABASE_DB_PASSWORD=your-database-password
+
 # REQUIRED - OpenAI Configuration
 OPENAI_API_KEY=sk-your-openai-api-key
 AI_MODEL=gpt-4o
 AI_TEMPERATURE=0.7
 AI_MAX_TOKENS=1000
+
+# REQUIRED - Database Migration Security
+MIGRATION_SECRET_KEY=your-secure-migration-key-here
 
 # OPTIONAL - Server Configuration
 PORT=3000
@@ -207,12 +227,15 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 RATE_LIMIT_WINDOW=60000
 RATE_LIMIT_MAX=100
 
-# REQUIRED - Database Migration Security
-MIGRATION_SECRET_KEY=your-secure-migration-key-here
-
 # OPTIONAL - Organization Settings
 ORGANIZATION_NAME=Vezlo
 ASSISTANT_NAME=Vezlo Assistant
+
+# OPTIONAL - Feature Flags
+ENABLE_CACHE=true
+ENABLE_VOICE=true
+ENABLE_GITHUB_SYNC=true
+ENABLE_HUMAN_HANDOFF=true
 
 # OPTIONAL - Knowledge Base
 CHUNK_SIZE=1000
@@ -224,10 +247,25 @@ CHUNK_OVERLAP=200
 The package provides these command-line tools:
 
 ### vezlo-setup
-Interactive wizard for initial configuration and database setup.
+**Interactive setup wizard** that guides you through the complete configuration process. This CLI tool provides the same functionality as the web-based setup wizard but runs in your terminal.
+
 ```bash
 vezlo-setup
 ```
+
+**What it does:**
+- **Step 1**: Database Configuration (Supabase or PostgreSQL)
+- **Step 2**: OpenAI API Configuration  
+- **Step 3**: Automatic Table Creation
+- **Step 4**: Environment File Generation
+
+**Features:**
+- ✅ Interactive prompts with color-coded output
+- ✅ Database connection testing
+- ✅ Automatic table creation via migrations
+- ✅ Environment file (.env) generation
+- ✅ Validation and error handling
+- ✅ Same flow as web-based setup wizard
 
 ### vezlo-validate
 Validates database connection and verifies all tables exist.
@@ -275,6 +313,11 @@ http://localhost:3000/api
 - `GET /api/migrate?key=<secret>` - Run pending database migrations
 - `GET /api/migrate/status?key=<secret>` - Check migration status
 
+**Migration Workflow:**
+1. **Create Migration**: Use `npm run migrate:make migration_name` to create new migration files
+2. **Check Status**: Use `/api/migrate/status` to see pending migrations
+3. **Run Migrations**: Use `/api/migrate` to execute pending migrations remotely
+
 **Migration Endpoints Usage:**
 ```bash
 # Check migration status
@@ -286,6 +329,16 @@ curl "http://localhost:3000/api/migrate?key=your-migration-secret-key"
 
 **Required Environment Variable:**
 - `MIGRATION_SECRET_KEY` - Secret key for authenticating migration requests
+
+**Migration Creation Example:**
+```bash
+# Create a new migration
+npm run migrate:make add_users_table
+
+# This creates: src/migrations/002_add_users_table.ts
+# Edit the file to add your schema changes
+# Then run via endpoint or command line
+```
 
 #### Knowledge Search
 - `POST /api/knowledge/search` - Search knowledge base
@@ -476,6 +529,7 @@ vezlo/
 ### Environment Variables
 Ensure all required environment variables are set:
 - `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` (required)
+- `SUPABASE_DB_HOST`, `SUPABASE_DB_PASSWORD` (required for migrations)
 - `OPENAI_API_KEY` (required)
 - `MIGRATION_SECRET_KEY` (required for migration endpoints)
 - `NODE_ENV=production`

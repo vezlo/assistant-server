@@ -16,6 +16,9 @@ SUPABASE_DB_NAME=postgres
 SUPABASE_DB_USER=postgres
 SUPABASE_DB_PASSWORD=your-database-password
 
+# Migration API Security (Required for /api/migrate endpoints)
+MIGRATION_SECRET_KEY=your-secure-migration-key-here
+
 # Alternative: Use connection string
 # DATABASE_URL=postgresql://postgres:password@db.your-project.supabase.co:5432/postgres
 ```
@@ -71,6 +74,122 @@ npm run migrate:up
 # Rollback last migration
 npm run migrate:down
 ```
+
+## API Endpoints for Remote Migration Management
+
+### Overview
+
+You can manage migrations remotely using HTTP endpoints, which is especially useful for:
+- **Production deployments** where you can't access the server directly
+- **Serverless environments** like Vercel
+- **Automated deployment pipelines**
+- **Remote database management**
+
+### Migration Endpoints
+
+#### Check Migration Status
+```bash
+GET /api/migrate/status?key=<migration-secret-key>
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Migration status retrieved successfully",
+  "currentVersion": "up-to-date",
+  "details": {
+    "pendingMigrations": 0,
+    "completedMigrations": 2,
+    "timestamp": "2025-01-13T12:00:00.000Z"
+  }
+}
+```
+
+#### Run Pending Migrations
+```bash
+GET /api/migrate?key=<migration-secret-key>
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Migrations completed successfully",
+  "currentVersion": "2",
+  "details": {
+    "previousVersion": "1",
+    "migrationsRun": ["002_add_users_table"],
+    "timestamp": "2025-01-13T12:00:00.000Z"
+  }
+}
+```
+
+### Usage Examples
+
+#### Local Development
+```bash
+# Check status
+curl "http://localhost:3000/api/migrate/status?key=your-secret-key"
+
+# Run migrations
+curl "http://localhost:3000/api/migrate?key=your-secret-key"
+```
+
+#### Production (Vercel/Serverless)
+```bash
+# Check status
+curl "https://your-app.vercel.app/api/migrate/status?key=your-secret-key"
+
+# Run migrations
+curl "https://your-app.vercel.app/api/migrate?key=your-secret-key"
+```
+
+### Security
+
+- **Authentication Required**: All migration endpoints require a secret key
+- **Environment Variable**: Set `MIGRATION_SECRET_KEY` in your environment
+- **HTTPS Only**: Always use HTTPS in production
+- **Key Management**: Keep your migration secret key secure and rotate regularly
+
+### Complete Migration Workflow
+
+1. **Create Migration Locally:**
+   ```bash
+   npm run migrate:make add_new_feature
+   ```
+
+2. **Edit Migration File:**
+   ```typescript
+   // src/migrations/003_add_new_feature.ts
+   export async function up(knex: Knex): Promise<void> {
+     await knex.schema.createTable('new_table', (table) => {
+       table.increments('id');
+       table.string('name');
+     });
+   }
+
+   export async function down(knex: Knex): Promise<void> {
+     await knex.schema.dropTable('new_table');
+   }
+   ```
+
+3. **Deploy to Production:**
+   ```bash
+   git add .
+   git commit -m "Add new feature migration"
+   git push origin main
+   vercel --prod
+   ```
+
+4. **Run Migration Remotely:**
+   ```bash
+   # Check what's pending
+   curl "https://your-app.vercel.app/api/migrate/status?key=your-secret-key"
+   
+   # Run the migration
+   curl "https://your-app.vercel.app/api/migrate?key=your-secret-key"
+   ```
 
 ## How Migrations Work
 
