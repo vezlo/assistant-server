@@ -4,6 +4,14 @@ import dotenv from 'dotenv';
 // Load environment variables
 dotenv.config();
 
+// Register ts-node for TypeScript support in migrations (works in all environments)
+try {
+  require('ts-node/register');
+} catch (e) {
+  // ts-node not available, that's okay - migrations will use compiled JS
+}
+
+
 const config: { [key: string]: Knex.Config } = {
   development: {
     client: 'postgresql',

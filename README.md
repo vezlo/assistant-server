@@ -207,6 +207,9 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 RATE_LIMIT_WINDOW=60000
 RATE_LIMIT_MAX=100
 
+# REQUIRED - Database Migration Security
+MIGRATION_SECRET_KEY=your-secure-migration-key-here
+
 # OPTIONAL - Organization Settings
 ORGANIZATION_NAME=Vezlo
 ASSISTANT_NAME=Vezlo Assistant
@@ -267,6 +270,24 @@ http://localhost:3000/api
 - `GET /api/knowledge/items/:uuid` - Get knowledge item
 - `PUT /api/knowledge/items/:uuid` - Update knowledge item
 - `DELETE /api/knowledge/items/:uuid` - Delete knowledge item
+
+#### Database Migrations
+- `GET /api/migrate?key=<secret>` - Run pending database migrations
+- `GET /api/migrate/status?key=<secret>` - Check migration status
+
+**Migration Endpoints Usage:**
+```bash
+# Check migration status
+curl "http://localhost:3000/api/migrate/status?key=your-migration-secret-key"
+
+# Run pending migrations
+curl "http://localhost:3000/api/migrate?key=your-migration-secret-key"
+```
+
+**Required Environment Variable:**
+- `MIGRATION_SECRET_KEY` - Secret key for authenticating migration requests
+
+#### Knowledge Search
 - `POST /api/knowledge/search` - Search knowledge base
 
 #### Feedback
@@ -456,6 +477,7 @@ vezlo/
 Ensure all required environment variables are set:
 - `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` (required)
 - `OPENAI_API_KEY` (required)
+- `MIGRATION_SECRET_KEY` (required for migration endpoints)
 - `NODE_ENV=production`
 - `CORS_ORIGINS` (set to your domain)
 
@@ -476,6 +498,15 @@ docker run -d \
 - Health check endpoint: `/health`
 - Docker health check configured
 - Logs available in `./logs/` directory
+
+### Database Migrations in Production
+```bash
+# Check migration status
+curl "https://your-domain.com/api/migrate/status?key=your-migration-secret-key"
+
+# Run pending migrations
+curl "https://your-domain.com/api/migrate?key=your-migration-secret-key"
+```
 
 ## 🤝 Contributing
 

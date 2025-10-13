@@ -246,10 +246,10 @@
                 </div>
                 <p style="margin-bottom: 20px;">What we'll configure:</p>
                 <ul style="margin-left: 20px; margin-bottom: 20px; line-height: 1.8;">
-                    <li>✅ Database connection (Supabase)</li>
+                    <li>✅ Database connection verification (Supabase)</li>
                     <li>✅ OpenAI API configuration</li>
-                    <li>✅ Automatic table creation</li>
-                    <li>✅ Connection validation</li>
+                    <li>✅ Manual database setup instructions</li>
+                    <li>✅ Environment variables for Vercel</li>
                 </ul>
                 <div class="button-group">
                     <button class="btn-primary" onclick="nextStep()">Get Started →</button>
@@ -360,6 +360,34 @@
                         <p style="color: #6b7280; margin-bottom: 15px;">Add these environment variables to your Vercel project settings:</p>
                         
                         <div id="env-vars" style="background: #f9fafb; border: 1px solid #e5e7eb; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 13px; word-wrap: break-word; overflow-wrap: break-word;">
+                        </div>
+
+                        <!-- Database Credentials Guide -->
+                        <div style="background: #eff6ff; border-left: 4px solid #3b82f6; padding: 20px; margin: 20px 0; border-radius: 8px;">
+                            <h4 style="margin-bottom: 15px; color: #1e40af;">🔍 Where to Get Database Credentials</h4>
+                            <p style="color: #1e40af; margin-bottom: 15px;">For the database-related environment variables above, get them from your Supabase Dashboard:</p>
+                            
+                            <div style="background: white; padding: 15px; border-radius: 6px; margin-bottom: 15px;">
+                                <strong>📍 Steps to get database credentials:</strong>
+                                <ol style="margin: 10px 0 0 20px; line-height: 1.8; color: #374151;">
+                                    <li>Go to your <a href="#" id="supabase-dashboard-link" target="_blank" style="color: #3b82f6; text-decoration: none;">Supabase Dashboard</a></li>
+                                    <li>Select your project → <strong>Settings</strong> → <strong>Database</strong></li>
+                                    <li>Scroll down to <strong>"Connection info"</strong> section</li>
+                                    <li>Click <strong>"Connect"</strong> → <strong>"Session pooler"</strong></li>
+                                    <li>Copy the connection details:</li>
+                                </ol>
+                                
+                                <div style="background: #f8fafc; padding: 12px; border-radius: 6px; margin-top: 10px; font-family: monospace; font-size: 12px;">
+                                    <div style="margin-bottom: 8px;"><strong>SUPABASE_DB_HOST:</strong> <span style="color: #059669;">aws-1-eu-central-1.pooler.supabase.com</span></div>
+                                    <div style="margin-bottom: 8px;"><strong>SUPABASE_DB_NAME:</strong> <span style="color: #059669;">postgres</span></div>
+                                    <div style="margin-bottom: 8px;"><strong>SUPABASE_DB_USER:</strong> <span style="color: #059669;">postgres.your-project-ref</span></div>
+                                    <div><strong>SUPABASE_DB_PASSWORD:</strong> <span style="color: #059669;">[Your database password]</span></div>
+                                </div>
+                            </div>
+                            
+                            <div style="background: #fef3c7; padding: 12px; border-radius: 6px; border-left: 3px solid #f59e0b;">
+                                <strong>⚠️ Important:</strong> Use the <strong>Session pooler</strong> connection details, not the direct database connection. The session pooler is optimized for serverless environments like Vercel.
+                            </div>
                         </div>
 
                         <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
@@ -513,6 +541,15 @@
                         envVarsHTML += `<div style="margin-bottom: 10px; word-break: break-all;"><strong style="color: #1e40af;">${key}</strong> = <span style="color: #059669;">${value}</span></div>`;
                     }
                     envVarsDiv.innerHTML = envVarsHTML;
+
+                    // Set Supabase dashboard link dynamically
+                    const projectRef = result.supabase_url.match(/https:\/\/(.+?)\.supabase\.co/)?.[1];
+                    if (projectRef) {
+                        const dashboardLink = document.getElementById('supabase-dashboard-link');
+                        if (dashboardLink) {
+                            dashboardLink.href = `https://supabase.com/dashboard/project/${projectRef}/settings/database`;
+                        }
+                    }
 
                 } else {
                     // Show error

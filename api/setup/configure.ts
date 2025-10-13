@@ -108,8 +108,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       env_vars_needed: {
         SUPABASE_URL: config.supabase_url,
         SUPABASE_SERVICE_KEY: config.supabase_service_key,
+        SUPABASE_DB_HOST: dbHost,
+        SUPABASE_DB_NAME: 'postgres',
+        SUPABASE_DB_USER: `postgres.${projectRef}`,
+        SUPABASE_DB_PASSWORD: 'your-database-password',
         OPENAI_API_KEY: config.openai_api_key,
-        AI_MODEL: config.ai_model || 'gpt-4o'
+        AI_MODEL: config.ai_model || 'gpt-4o',
+        MIGRATION_SECRET_KEY: 'your-secure-migration-key-here'
       }
     });
 

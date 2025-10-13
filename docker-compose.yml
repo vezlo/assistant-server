@@ -13,6 +13,7 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - LOG_LEVEL=info
+      - USE_TS_NODE=true
     env_file:
       - ./.env
     volumes:
