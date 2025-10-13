@@ -253,20 +253,6 @@ The package provides these command-line tools:
 vezlo-setup
 ```
 
-**What it does:**
-- **Step 1**: Database Configuration (Supabase or PostgreSQL)
-- **Step 2**: OpenAI API Configuration  
-- **Step 3**: Automatic Table Creation
-- **Step 4**: Environment File Generation
-
-**Features:**
-- ✅ Interactive prompts with color-coded output
-- ✅ Database connection testing
-- ✅ Automatic table creation via migrations
-- ✅ Environment file (.env) generation
-- ✅ Validation and error handling
-- ✅ Same flow as web-based setup wizard
-
 ### vezlo-validate
 Validates database connection and verifies all tables exist.
 ```bash
@@ -617,4 +603,4 @@ This project is dual-licensed:
 
 ---
 
-**Status**: ✅ Production Ready | **Version**: 1.0.0 | **Node.js**: 20+ | **TypeScript**: 5+
+**Status**: ✅ Production Ready | **Version**: 1.3.0 | **Node.js**: 20+ | **TypeScript**: 5+
