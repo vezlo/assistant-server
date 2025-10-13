@@ -23,57 +23,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Extract API key from query or header
     const apiKey = req.query.key as string || req.headers['x-migration-key'] as string;
 
-  // Handle different endpoints
-  if (req.method === 'GET' && req.url === '/api/migrate') {
-    // Run migrations
-    if (!apiKey) {
-      return res.status(400).json({
-        success: false,
-        message: 'Migration API key is required',
-        error: 'MISSING_API_KEY',
-        details: {
-          usage: 'Add ?key=your-secret-key to the URL or x-migration-key header'
-        }
-      });
-    }
-
-    const result = await MigrationService.runMigrations(apiKey);
-    
-    const statusCode = result.success ? 200 : 
-      result.error === 'UNAUTHORIZED' ? 401 :
-      result.error === 'MISSING_ENV_VARS' || result.error === 'DATABASE_CONNECTION_FAILED' ? 400 : 500;
-    
-    return res.status(statusCode).json(result);
-
-  } else if (req.method === 'GET' && req.url === '/api/migrate/status') {
-      // Get migration status
-      if (!apiKey) {
-        return res.status(400).json({
-          success: false,
-          message: 'Migration API key is required',
-          error: 'MISSING_API_KEY'
-        });
+  // Only allow GET requests
+  if (req.method !== 'GET') {
+    return res.status(405).json({
+      success: false,
+      message: 'Method not allowed',
+      error: 'METHOD_NOT_ALLOWED',
+      details: {
+        allowedMethods: ['GET']
       }
+    });
+  }
 
-      const result = await MigrationService.getStatus(apiKey);
-      
-      const statusCode = result.success ? 200 : 
-        result.error === 'UNAUTHORIZED' ? 401 : 500;
-      
-      return res.status(statusCode).json(result);
+  // Run migrations
+  if (!apiKey) {
+    return res.status(400).json({
+      success: false,
+      message: 'Migration API key is required',
+      error: 'MISSING_API_KEY',
+      details: {
+        usage: 'Add ?key=your-secret-key to the URL or x-migration-key header'
+      }
+    });
+  }
 
-    } else {
-      // Method not allowed
-      return res.status(405).json({
-        success: false,
-        message: 'Method not allowed',
-        error: 'METHOD_NOT_ALLOWED',
-        details: {
-          allowedMethods: ['GET'],
-          endpoints: ['/api/migrate', '/api/migrate/status']
-        }
-      });
-    }
+  const result = await MigrationService.runMigrations(apiKey);
+  
+  const statusCode = result.success ? 200 : 
+    result.error === 'UNAUTHORIZED' ? 401 :
+    result.error === 'MISSING_ENV_VARS' || result.error === 'DATABASE_CONNECTION_FAILED' ? 400 : 500;
+  
+  return res.status(statusCode).json(result);
 
   } catch (error: any) {
     console.error('Migration API error:', error);
