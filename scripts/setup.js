@@ -97,6 +97,18 @@ async function main() {
 
   const migrationStatus = await setupMigrations(config, validationStatus) || { migrations: validationStatus.database === 'success' ? 'success' : 'skipped' };
 
+  // Step 6: Default Data Setup (only if migrations succeeded)
+  if (migrationStatus.migrations === 'success') {
+    log('\n═══════════════════════════════════════════════════════════', 'cyan');
+    log('  STEP 6: Default Data Setup', 'bright');
+    log('═══════════════════════════════════════════════════════════\n', 'cyan');
+
+    const defaultDataStatus = await setupDefaultData(config);
+    migrationStatus.defaultData = defaultDataStatus;
+  } else {
+    migrationStatus.defaultData = 'skipped';
+  }
+
   // Final Instructions / Summary
   log('\n═══════════════════════════════════════════════════════════', 'green');
   log('  🎉 Setup Complete!', 'bright');
@@ -108,12 +120,19 @@ async function main() {
   log(`  Supabase API: ${supaStatus === 'OK' ? colors.green + 'OK' : supaStatus === 'FAILED' ? colors.red + 'FAILED' : colors.yellow + 'UNKNOWN'}${colors.reset}`);
   log(`  Database: ${validationStatus.database === 'success' ? colors.green + 'OK' : colors.red + (validationStatus.database === 'skipped' ? 'SKIPPED' : 'FAILED')}${colors.reset}`);
   log(`  Migrations: ${migrationStatus.migrations === 'success' ? colors.green + 'OK' : migrationStatus.migrations === 'skipped' ? colors.yellow + 'SKIPPED' : colors.red + 'FAILED'}${colors.reset}`);
+  log(`  Default Data: ${migrationStatus.defaultData === 'success' ? colors.green + 'OK' : migrationStatus.defaultData === 'skipped' ? colors.yellow + 'SKIPPED' : colors.red + 'FAILED'}${colors.reset}`);
 
   log('\nNext steps:');
   log('  1. Review your .env file');
   if (migrationStatus.migrations !== 'success') {
     log('  2. Run database migrations: ' + colors.bright + 'npm run migrate:latest' + colors.reset);
-    log('     Or via API (after starting server): ' + colors.bright + 'GET /api/migrate?key=$MIGRATION_SECRET_KEY' + colors.reset);
+    log('  3. Setup default data: ' + colors.bright + 'npm run seed-default' + colors.reset);
+    log('  4. Start the server: ' + colors.bright + 'vezlo-server' + colors.reset);
+    log('  5. Visit: ' + colors.bright + 'http://localhost:3000/health' + colors.reset);
+    log('  6. API docs: ' + colors.bright + 'http://localhost:3000/docs' + colors.reset);
+    log('  7. Test API: ' + colors.bright + 'curl http://localhost:3000/health' + colors.reset + '\n');
+  } else if (migrationStatus.defaultData !== 'success') {
+    log('  2. Setup default data: ' + colors.bright + 'npm run seed-default' + colors.reset);
     log('  3. Start the server: ' + colors.bright + 'vezlo-server' + colors.reset);
     log('  4. Visit: ' + colors.bright + 'http://localhost:3000/health' + colors.reset);
     log('  5. API docs: ' + colors.bright + 'http://localhost:3000/docs' + colors.reset);
@@ -463,3 +482,30 @@ main().catch(error => {
   rl.close();
   process.exit(1);
 });
+async function setupDefaultData(config) {
+  log('🔄 Setting up default company and admin user...', 'yellow');
+
+  try {
+    // Import the setup service dynamically
+    const { runDefaultSetup } = await import('./seed-default.js');
+    
+    // Set environment variables for the setup
+    process.env.SUPABASE_URL = config.SUPABASE_URL;
+    process.env.SUPABASE_SERVICE_KEY = config.SUPABASE_SERVICE_KEY;
+    process.env.DEFAULT_ADMIN_EMAIL = config.DEFAULT_ADMIN_EMAIL || 'admin@vezlo.com';
+    process.env.DEFAULT_ADMIN_PASSWORD = config.DEFAULT_ADMIN_PASSWORD || 'admin123';
+    process.env.ORGANIZATION_NAME = config.ORGANIZATION_NAME || 'Vezlo';
+    process.env.JWT_SECRET = config.JWT_SECRET || require('crypto').randomBytes(32).toString('hex');
+
+    // Run the default setup
+    await runDefaultSetup();
+    
+    log('✅ Default data setup completed successfully!', 'green');
+    return 'success';
+  } catch (err) {
+    log(`❌ Default data setup failed: ${err.message}`, 'red');
+    log('\nYou can run default data setup manually later:', 'yellow');
+    log('   npm run seed-default', 'cyan');
+    return 'failed';
+  }
+}

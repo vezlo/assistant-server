@@ -35,6 +35,11 @@ const options = {
         description: process.env.VERCEL_URL ? 'Current deployment' : 'Development server'
       }
     ],
+    security: [
+      {
+        bearerAuth: []
+      }
+    ],
     components: {
       schemas: {
         // ============================================================================
@@ -106,17 +111,17 @@ const options = {
       // SECURITY SCHEMES
       // ============================================================================
       securitySchemes: {
-        BearerAuth: {
+        bearerAuth: {
           type: 'http',
           scheme: 'bearer',
           bearerFormat: 'JWT',
-          description: 'JWT token for authentication'
+          description: 'JWT token for user authentication'
         },
-        ApiKeyAuth: {
+        apiKeyAuth: {
           type: 'apiKey',
           in: 'header',
           name: 'X-API-Key',
-          description: 'API key for authentication'
+          description: 'API key for service-to-service authentication'
         }
       },
 
@@ -145,15 +150,6 @@ const options = {
             default: 0
           }
         },
-        CompanyUuidParam: {
-          name: 'company_uuid',
-          in: 'query',
-          description: 'Filter by company UUID',
-          schema: {
-            type: 'integer',
-            default: 67890
-          }
-        }
       },
 
       // ============================================================================

@@ -346,3 +346,5 @@ docs/generated/
 CLAUDE.md
 .claude/
 .vercel
+
+assistant-chat/

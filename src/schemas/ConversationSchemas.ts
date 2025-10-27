@@ -9,11 +9,8 @@ export const ConversationSchemas = {
   // ============================================================================
   CreateConversationRequest: {
     type: 'object',
-    required: ['user_uuid'],
     properties: {
-      title: { type: 'string', description: 'Conversation title', default: 'New Conversation' },
-      user_uuid: { type: 'integer', description: 'User UUID who creates the conversation', default: 12345 },
-      company_uuid: { type: 'integer', description: 'Optional company UUID', default: 67890 }
+      title: { type: 'string', description: 'Conversation title', default: 'New Conversation' }
     }
   },
 
@@ -32,8 +29,6 @@ export const ConversationSchemas = {
     properties: {
       uuid: { type: 'string', description: 'Conversation UUID' },
       title: { type: 'string', description: 'Conversation title' },
-      user_uuid: { type: 'string', description: 'User UUID' },
-      company_uuid: { type: 'string', description: 'Company UUID' },
       message_count: { type: 'integer', description: 'Number of messages' },
       created_at: { type: 'string', format: 'date-time' },
       updated_at: { type: 'string', format: 'date-time' }
@@ -45,8 +40,6 @@ export const ConversationSchemas = {
     properties: {
       uuid: { type: 'string', description: 'Conversation UUID' },
       title: { type: 'string', description: 'Conversation title' },
-      user_uuid: { type: 'string', description: 'User UUID' },
-      company_uuid: { type: 'string', description: 'Company UUID' },
       message_count: { type: 'integer', description: 'Number of messages' },
       created_at: { type: 'string', format: 'date-time' },
       updated_at: { type: 'string', format: 'date-time' },
@@ -67,6 +60,22 @@ export const ConversationSchemas = {
       total: { type: 'integer', description: 'Total number of conversations' },
       limit: { type: 'integer', description: 'Conversations per page' },
       offset: { type: 'integer', description: 'Conversations skipped' }
+    }
+  },
+
+  CreateConversationResponse: {
+    type: 'object',
+    properties: {
+      success: { type: 'boolean', example: true },
+      data: { $ref: '#/components/schemas/ConversationResponse' }
+    }
+  },
+
+  GetConversationResponse: {
+    type: 'object',
+    properties: {
+      success: { type: 'boolean', example: true },
+      data: { $ref: '#/components/schemas/ConversationWithMessages' }
     }
   }
 };

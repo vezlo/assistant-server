@@ -2,6 +2,24 @@
 
 🚀 **Production-ready Node.js/TypeScript API server** for the Vezlo AI Assistant platform - Complete backend APIs with Docker deployment and database migrations.
 
+## 🚨 Breaking Change Notice (v2.0.0)
+
+**This version introduces multi-tenancy support with breaking changes. Existing data will not be migrated automatically.**
+
+### Migration Required
+- **Database Schema**: New authentication and multi-tenancy tables
+- **API Changes**: JWT authentication now required for all endpoints
+- **Data Structure**: Foreign key relationships updated for multi-tenancy
+
+### Quick Migration Steps
+1. **Upgrade**: `npm install @vezlo/assistant-server@latest`
+2. **Run migrations**: `npm run migrate:latest`
+3. **Setup**: `npm run seed-default`
+
+See [CHANGELOG.md](./CHANGELOG.md) for complete migration guide.
+
+---
+
 ## 🏗️ Architecture
 
 - **Backend APIs** - RESTful API endpoints for AI chat and knowledge management

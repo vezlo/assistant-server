@@ -9,10 +9,9 @@ export const FeedbackSchemas = {
   // ============================================================================
   FeedbackRequest: {
     type: 'object',
-    required: ['message_uuid', 'user_uuid', 'rating'],
+    required: ['message_uuid', 'rating'],
     properties: {
       message_uuid: { type: 'string', description: 'Message UUID' },
-      user_uuid: { type: 'integer', description: 'User UUID providing feedback', default: 12345 },
       rating: { type: 'string', enum: ['positive', 'negative'], description: 'Feedback rating' },
       category: { 
         type: 'string', 
@@ -112,6 +111,14 @@ export const FeedbackSchemas = {
           }
         }
       }
+    }
+  },
+
+  SubmitFeedbackResponse: {
+    type: 'object',
+    properties: {
+      success: { type: 'boolean', example: true },
+      data: { $ref: '#/components/schemas/FeedbackResponse' }
     }
   }
 };

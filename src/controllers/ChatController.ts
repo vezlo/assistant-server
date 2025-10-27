@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { ChatManager } from '../services/ChatManager';
 import { UnifiedStorage } from '../storage/UnifiedStorage';
+import { AuthenticatedRequest } from '../middleware/auth';
 import logger from '../config/logger';
 
 export class ChatController {
@@ -13,12 +14,12 @@ export class ChatController {
   }
 
   // Create a new conversation
-  async createConversation(req: Request, res: Response): Promise<void> {
+  async createConversation(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const { title, user_uuid, company_uuid } = req.body;
+      const { title } = req.body;
 
-      if (!user_uuid) {
-        res.status(400).json({ error: 'user_uuid is required' });
+      if (!req.profile) {
+        res.status(401).json({ error: 'Authentication required' });
         return;
       }
 
@@ -27,8 +28,8 @@ export class ChatController {
       
       const conversation = await this.storage.saveConversation({
         threadId,
-        userId: user_uuid.toString(),
-        organizationId: company_uuid?.toString(),
+        userId: req.user!.id,
+        organizationId: req.profile?.companyId || undefined,
         title: title || 'New Conversation',
         messageCount: 0,
         createdAt: new Date(),
@@ -38,8 +39,6 @@ export class ChatController {
       res.json({
         uuid: conversation.id,
         title: conversation.title,
-        user_uuid: conversation.userId,
-        company_uuid: conversation.organizationId,
         message_count: conversation.messageCount,
         created_at: conversation.createdAt,
         updated_at: conversation.updatedAt
@@ -213,22 +212,22 @@ export class ChatController {
   }
 
   // Get user conversations (renamed from getUserConversations)
-  async getUserConversations(req: Request, res: Response): Promise<void> {
+  async getUserConversations(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const { uuid } = req.params;
-      const { company_uuid } = req.query;
+      if (!req.profile) {
+        res.status(401).json({ error: 'Authentication required' });
+        return;
+      }
 
       const conversations = await this.storage.getUserConversations(
-        uuid,
-        company_uuid as string
+        req.user!.id,
+        req.profile?.companyId || undefined
       );
 
       res.json({
         conversations: conversations.map(conversation => ({
           uuid: conversation.id,
           title: conversation.title,
-          user_uuid: conversation.userId,
-          company_uuid: conversation.organizationId,
           message_count: conversation.messageCount,
           created_at: conversation.createdAt,
           updated_at: conversation.updatedAt
@@ -267,12 +266,17 @@ export class ChatController {
   }
 
   // Submit message feedback
-  async submitFeedback(req: Request, res: Response): Promise<void> {
+  async submitFeedback(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const { message_uuid, user_uuid, rating, category, comment, suggested_improvement } = req.body;
+      const { message_uuid, rating, category, comment, suggested_improvement } = req.body;
 
-      if (!message_uuid || !user_uuid || !rating) {
-        res.status(400).json({ error: 'message_uuid, user_uuid, and rating are required' });
+      if (!message_uuid || !rating) {
+        res.status(400).json({ error: 'message_uuid and rating are required' });
+        return;
+      }
+
+      if (!req.profile) {
+        res.status(401).json({ error: 'Authentication required' });
         return;
       }
 
@@ -285,8 +289,8 @@ export class ChatController {
 
       const feedback = await this.storage.saveFeedback({
         messageId: message_uuid,
-        conversationId: message.conversationId, // Use the actual conversationId from the message
-        userId: user_uuid.toString(),
+        conversationId: message.conversationId,
+        userId: req.user!.id,
         rating,
         category,
         comment,
@@ -299,7 +303,6 @@ export class ChatController {
         feedback: {
           uuid: feedback.id,
           message_uuid: feedback.messageId,
-          user_uuid: feedback.userId,
           rating: feedback.rating,
           category: feedback.category,
           comment: feedback.comment,

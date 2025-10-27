@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { KnowledgeBaseService } from '../services/KnowledgeBaseService';
 import { AIService } from '../services/AIService';
+import { AuthenticatedRequest } from '../middleware/auth';
 import logger from '../config/logger';
 
 export class KnowledgeController {
@@ -12,11 +13,10 @@ export class KnowledgeController {
     this.aiService = aiService;
   }
 
-  async createItem(req: Request, res: Response): Promise<void> {
+  async createItem(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { 
         parent_uuid,
-        company_uuid, 
         title, 
         description, 
         type, 
@@ -24,12 +24,16 @@ export class KnowledgeController {
         file_url, 
         file_size, 
         file_type, 
-        metadata, 
-        created_by_uuid 
+        metadata
       } = req.body;
 
-      if (!title || !type || !created_by_uuid) {
-        res.status(400).json({ error: 'title, type, and created_by_uuid are required' });
+      if (!title || !type) {
+        res.status(400).json({ error: 'title and type are required' });
+        return;
+      }
+
+      if (!req.profile) {
+        res.status(401).json({ error: 'Authentication required' });
         return;
       }
 
@@ -53,7 +57,7 @@ export class KnowledgeController {
 
       const itemId = await this.knowledgeBase.createItem({
         parent_id: parent_uuid,
-        company_id: company_uuid || 1,
+        company_id: req.profile?.companyId ? parseInt(req.profile.companyId) : undefined,
         title,
         description,
         type,
@@ -62,7 +66,7 @@ export class KnowledgeController {
         file_size,
         file_type,
         metadata,
-        created_by: parseInt(created_by_uuid) || 1
+        created_by: parseInt(req.user!.id)
       });
 
       res.json({
@@ -113,19 +117,23 @@ export class KnowledgeController {
     }
   }
 
-  async listItems(req: Request, res: Response): Promise<void> {
+  async listItems(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { 
         parent_uuid, 
-        company_uuid, 
         type, 
         limit = '50', 
         offset = '0' 
       } = req.query;
 
+      if (!req.profile) {
+        res.status(401).json({ error: 'Authentication required' });
+        return;
+      }
+
       const options = {
         parent_id: parent_uuid as string,
-        company_id: company_uuid ? parseInt(company_uuid as string) : undefined,
+        company_id: req.profile?.companyId ? parseInt(req.profile.companyId) : undefined,
         type: type as string,
         limit: parseInt(limit as string),
         offset: parseInt(offset as string)
@@ -137,15 +145,13 @@ export class KnowledgeController {
         items: result.items.map(item => ({
           uuid: item.id,
           parent_uuid: item.parent_id,
-          company_uuid: item.company_id,
           title: item.title,
           description: item.description,
           type: item.type,
           file_url: item.file_url,
           file_size: item.file_size,
           file_type: item.file_type,
-          metadata: item.metadata,
-          created_by: item.created_by
+          metadata: item.metadata
         })),
         total: result.total,
         limit: options.limit,
@@ -221,12 +227,17 @@ export class KnowledgeController {
     }
   }
 
-  async search(req: Request, res: Response): Promise<void> {
+  async search(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const { query, limit = '5', threshold = '0.7', type = 'hybrid', company_uuid } = req.body;
+      const { query, limit = '5', threshold = '0.7', type = 'hybrid' } = req.body;
 
       if (!query) {
         res.status(400).json({ error: 'query is required' });
+        return;
+      }
+
+      if (!req.profile) {
+        res.status(401).json({ error: 'Authentication required' });
         return;
       }
 
@@ -234,7 +245,7 @@ export class KnowledgeController {
         limit: parseInt(limit as string),
         threshold: parseFloat(threshold as string),
         type: type as 'semantic' | 'keyword' | 'hybrid',
-        company_id: company_uuid ? parseInt(company_uuid) : undefined
+        company_id: req.profile?.companyId ? parseInt(req.profile.companyId) : undefined
       });
 
       res.json({
@@ -259,12 +270,17 @@ export class KnowledgeController {
     }
   }
 
-  async ragSearch(req: Request, res: Response): Promise<void> {
+  async ragSearch(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const { query, company_uuid } = req.body;
+      const { query } = req.body;
 
       if (!query) {
         res.status(400).json({ error: 'query is required' });
+        return;
+      }
+
+      if (!req.profile) {
+        res.status(401).json({ error: 'Authentication required' });
         return;
       }
 
@@ -278,7 +294,7 @@ export class KnowledgeController {
         limit: 3,
         threshold: 0.7,
         type: 'hybrid',
-        company_id: company_uuid ? parseInt(company_uuid) : undefined
+        company_id: req.profile?.companyId ? parseInt(req.profile.companyId) : undefined
       });
 
       // Generate AI response using the search results

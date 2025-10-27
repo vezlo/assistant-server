@@ -9,10 +9,9 @@ export const KnowledgeSchemas = {
   // ============================================================================
   CreateKnowledgeItemRequest: {
     type: 'object',
-    required: ['title', 'type', 'created_by_uuid'],
+    required: ['title', 'type'],
     properties: {
       parent_uuid: { type: 'string', description: 'Parent item UUID (for hierarchical structure)' },
-      company_uuid: { type: 'integer', description: 'Company UUID', default: 67890 },
       title: { type: 'string', description: 'Item title' },
       description: { type: 'string', description: 'Item description' },
       type: { 
@@ -24,8 +23,7 @@ export const KnowledgeSchemas = {
       file_url: { type: 'string', description: 'File/URL (required for file and url types)' },
       file_size: { type: 'integer', description: 'File size in bytes' },
       file_type: { type: 'string', description: 'MIME type for files' },
-      metadata: { type: 'object', description: 'Additional metadata' },
-      created_by_uuid: { type: 'integer', description: 'User UUID who created the item', default: 12345 }
+      metadata: { type: 'object', description: 'Additional metadata' }
     }
   },
 
@@ -49,8 +47,7 @@ export const KnowledgeSchemas = {
       query: { type: 'string', description: 'Search query' },
       limit: { type: 'integer', default: 5, description: 'Max results' },
       threshold: { type: 'number', default: 0.7, description: 'Similarity threshold' },
-      type: { type: 'string', enum: ['semantic', 'keyword', 'hybrid'], default: 'hybrid', description: 'Search type' },
-      company_uuid: { type: 'integer', description: 'Filter by company UUID', default: 67890 }
+      type: { type: 'string', enum: ['semantic', 'keyword', 'hybrid'], default: 'hybrid', description: 'Search type' }
     }
   },
 
@@ -58,8 +55,7 @@ export const KnowledgeSchemas = {
     type: 'object',
     required: ['query'],
     properties: {
-      query: { type: 'string', description: 'Search query for RAG', example: 'How do I reset my password?' },
-      company_uuid: { type: 'integer', description: 'Company UUID for filtering results', example: 1 }
+      query: { type: 'string', description: 'Search query for RAG', example: 'How do I reset my password?' }
     }
   },
 
@@ -71,7 +67,6 @@ export const KnowledgeSchemas = {
     properties: {
       uuid: { type: 'string', description: 'Item UUID' },
       parent_uuid: { type: 'string', description: 'Parent item UUID' },
-      company_uuid: { type: 'integer', description: 'Company UUID', default: 67890 },
       title: { type: 'string', description: 'Item title' },
       description: { type: 'string', description: 'Item description' },
       type: { type: 'string', description: 'Item type' },
@@ -80,7 +75,6 @@ export const KnowledgeSchemas = {
       file_size: { type: 'integer', description: 'File size in bytes' },
       file_type: { type: 'string', description: 'MIME type' },
       metadata: { type: 'object', description: 'Additional metadata' },
-      created_by_uuid: { type: 'integer', description: 'Creator user UUID' },
       created_at: { type: 'string', format: 'date-time' },
       updated_at: { type: 'string', format: 'date-time' }
     }
@@ -128,6 +122,38 @@ export const KnowledgeSchemas = {
     type: 'object',
     properties: {
       response: { type: 'string', description: 'AI-generated response based on knowledge base' }
+    }
+  },
+
+  CreateKnowledgeItemResponse: {
+    type: 'object',
+    properties: {
+      success: { type: 'boolean', example: true },
+      data: { $ref: '#/components/schemas/KnowledgeItemResponse' }
+    }
+  },
+
+  GetKnowledgeItemResponse: {
+    type: 'object',
+    properties: {
+      success: { type: 'boolean', example: true },
+      data: { $ref: '#/components/schemas/KnowledgeItemResponse' }
+    }
+  },
+
+  UpdateKnowledgeItemResponse: {
+    type: 'object',
+    properties: {
+      success: { type: 'boolean', example: true },
+      data: { $ref: '#/components/schemas/KnowledgeItemResponse' }
+    }
+  },
+
+  SearchKnowledgeResponse: {
+    type: 'object',
+    properties: {
+      success: { type: 'boolean', example: true },
+      data: { $ref: '#/components/schemas/KnowledgeSearchResponse' }
     }
   }
 };

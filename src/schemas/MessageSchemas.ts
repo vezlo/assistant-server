@@ -76,5 +76,21 @@ export const MessageSchemas = {
       },
       created_at: { type: 'string', format: 'date-time' }
     }
+  },
+
+  SendMessageResponse: {
+    type: 'object',
+    properties: {
+      success: { type: 'boolean', example: true },
+      data: { $ref: '#/components/schemas/MessageResponse' }
+    }
+  },
+
+  GenerateResponseResponse: {
+    type: 'object',
+    properties: {
+      success: { type: 'boolean', example: true },
+      data: { $ref: '#/components/schemas/GenerateMessageResponse' }
+    }
   }
 };

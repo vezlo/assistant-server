@@ -43,7 +43,7 @@ export class KnowledgeBaseService {
 
   constructor(config: KnowledgeBaseConfig) {
     this.supabase = config.supabase;
-    this.tableName = config.tableName || 'knowledge_items';
+    this.tableName = config.tableName || 'vezlo_knowledge_items';
   }
 
   async createItem(item: {

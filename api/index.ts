@@ -21,6 +21,7 @@ import { initializeSupabase, getSupabaseClient } from '../dist/src/config/databa
 import { specs, swaggerUi, swaggerUiOptions } from '../dist/src/config/swagger';
 import { config as globalConfig } from '../dist/src/config/global';
 import { errorHandler, notFoundHandler } from '../dist/src/middleware/errorHandler';
+import { authenticateUser, authenticateApiKey } from '../dist/src/middleware/auth';
 
 // Import services from compiled dist
 import { AIService } from '../dist/src/services/AIService';
@@ -31,6 +32,7 @@ import { UnifiedStorage } from '../dist/src/storage/UnifiedStorage';
 // Import controllers from compiled dist
 import { ChatController } from '../dist/src/controllers/ChatController';
 import { KnowledgeController } from '../dist/src/controllers/KnowledgeController';
+import { AuthController } from '../dist/src/controllers/AuthController';
 
 // Load environment variables
 config();
@@ -79,6 +81,8 @@ let knowledgeBase: KnowledgeBaseService;
 let storage: UnifiedStorage;
 let chatController: ChatController;
 let knowledgeController: KnowledgeController;
+let authController: AuthController;
+let supabase: any;
 
 async function initializeServices() {
   if (servicesInitialized) return;
@@ -87,7 +91,7 @@ async function initializeServices() {
 
   try {
     // Initialize Supabase
-    const supabase = initializeSupabase();
+    supabase = initializeSupabase();
     logger.info('Supabase client initialized');
 
     // Initialize storage
@@ -120,7 +124,8 @@ async function initializeServices() {
 
     // Initialize controllers
     chatController = new ChatController(chatManager, storage);
-    knowledgeController = new KnowledgeController(knowledgeBase);
+    knowledgeController = new KnowledgeController(knowledgeBase, aiService);
+    authController = new AuthController(supabase);
 
     servicesInitialized = true;
     logger.info('All services initialized successfully');
@@ -234,26 +239,88 @@ const requireServices = async (_req: any, res: any, next: any) => {
   }
 };
 
+// Helper function for authenticated routes
+const requireAuth = (req: any, res: any, next: any) => {
+  const authMiddleware = authenticateUser(supabase);
+  authMiddleware(req, res, next);
+};
+
+// Authentication APIs
+app.post('/api/auth/login', requireServices, (req, res) => authController.login(req, res));
+app.post('/api/auth/logout', requireServices, requireAuth, (req, res) => authController.logout(req, res));
+app.get('/api/auth/me', requireServices, requireAuth, (req, res) => authController.getMe(req, res));
+app.post('/api/auth/refresh', requireServices, (req, res) => authController.refreshToken(req, res));
+
 // Conversation APIs
-app.post('/api/conversations', requireServices, (req, res) => chatController.createConversation(req, res));
-app.get('/api/conversations/:uuid', requireServices, (req, res) => chatController.getConversation(req, res));
-app.delete('/api/conversations/:uuid', requireServices, (req, res) => chatController.deleteConversation(req, res));
-app.get('/api/users/:uuid/conversations', requireServices, (req, res) => chatController.getUserConversations(req, res));
+app.post('/api/conversations', requireServices, requireAuth, (req, res) => chatController.createConversation(req, res));
+app.get('/api/conversations/:uuid', requireServices, requireAuth, (req, res) => chatController.getConversation(req, res));
+app.delete('/api/conversations/:uuid', requireServices, requireAuth, (req, res) => chatController.deleteConversation(req, res));
 
 // Message APIs
-app.post('/api/conversations/:uuid/messages', requireServices, (req, res) => chatController.createUserMessage(req, res));
-app.post('/api/messages/:uuid/generate', requireServices, (req, res) => chatController.generateResponse(req, res));
+app.post('/api/conversations/:uuid/messages', requireServices, requireAuth, (req, res) => chatController.createUserMessage(req, res));
+app.post('/api/messages/:uuid/generate', requireServices, requireAuth, (req, res) => chatController.generateResponse(req, res));
 
-// Knowledge Base APIs
-app.post('/api/knowledge/items', requireServices, (req, res) => knowledgeController.createItem(req, res));
-app.get('/api/knowledge/items', requireServices, (req, res) => knowledgeController.listItems(req, res));
-app.get('/api/knowledge/items/:uuid', requireServices, (req, res) => knowledgeController.getItem(req, res));
-app.put('/api/knowledge/items/:uuid', requireServices, (req, res) => knowledgeController.updateItem(req, res));
-app.delete('/api/knowledge/items/:uuid', requireServices, (req, res) => knowledgeController.deleteItem(req, res));
-app.post('/api/knowledge/search', requireServices, (req, res) => knowledgeController.search(req, res));
+// Conversation list (moved to match server.ts order)
+app.get('/api/conversations', requireServices, requireAuth, (req, res) => chatController.getUserConversations(req, res));
 
 // Feedback API
-app.post('/api/feedback', requireServices, (req, res) => chatController.submitFeedback(req, res));
+app.post('/api/feedback', requireServices, requireAuth, (req, res) => chatController.submitFeedback(req, res));
+
+// Knowledge Base APIs
+app.post('/api/knowledge/items', requireServices, requireAuth, (req, res) => knowledgeController.createItem(req, res));
+app.get('/api/knowledge/items', requireServices, requireAuth, (req, res) => knowledgeController.listItems(req, res));
+app.post('/api/knowledge/search', requireServices, requireAuth, (req, res) => knowledgeController.search(req, res));
+app.post('/api/search', requireServices, requireAuth, (req, res) => knowledgeController.ragSearch(req, res));
+app.get('/api/knowledge/items/:uuid', requireServices, requireAuth, (req, res) => knowledgeController.getItem(req, res));
+app.put('/api/knowledge/items/:uuid', requireServices, requireAuth, (req, res) => knowledgeController.updateItem(req, res));
+app.delete('/api/knowledge/items/:uuid', requireServices, requireAuth, (req, res) => knowledgeController.deleteItem(req, res));
+
+// Migration APIs (for development/setup)
+app.get('/api/migrate', requireServices, async (req, res) => {
+  try {
+    const { runMigrations } = await import('../dist/src/services/MigrationService');
+    const result = await runMigrations();
+    res.json({
+      success: true,
+      message: 'Migrations completed successfully',
+      data: result
+    });
+  } catch (error) {
+    logger.error('Migration error:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'MIGRATION_FAILED',
+        message: error instanceof Error ? error.message : 'Migration failed',
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+});
+
+app.get('/api/migrate/status', requireServices, async (req, res) => {
+  try {
+    const { getMigrationStatus } = await import('../dist/src/config/knex');
+    const lastMigration = await getMigrationStatus();
+    res.json({
+      success: true,
+      data: {
+        lastMigration,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    logger.error('Migration status error:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'MIGRATION_STATUS_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to get migration status',
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+});
 
 // Error handlers
 app.use(notFoundHandler);
