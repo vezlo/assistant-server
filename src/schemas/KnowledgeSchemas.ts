@@ -67,6 +67,7 @@ export const KnowledgeSchemas = {
     properties: {
       uuid: { type: 'string', description: 'Item UUID' },
       parent_uuid: { type: 'string', description: 'Parent item UUID' },
+      company_uuid: { type: 'string', description: 'Company UUID' },
       title: { type: 'string', description: 'Item title' },
       description: { type: 'string', description: 'Item description' },
       type: { type: 'string', description: 'Item type' },
@@ -75,8 +76,7 @@ export const KnowledgeSchemas = {
       file_size: { type: 'integer', description: 'File size in bytes' },
       file_type: { type: 'string', description: 'MIME type' },
       metadata: { type: 'object', description: 'Additional metadata' },
-      created_at: { type: 'string', format: 'date-time' },
-      updated_at: { type: 'string', format: 'date-time' }
+      created_by: { type: 'string', description: 'User who created the item' }
     }
   },
 
@@ -111,10 +111,7 @@ export const KnowledgeSchemas = {
             metadata: { type: 'object', description: 'Additional metadata' }
           }
         }
-      },
-      total: { type: 'integer', description: 'Total results found' },
-      search_type: { type: 'string', description: 'Type of search performed' },
-      threshold: { type: 'number', description: 'Similarity threshold used' }
+      }
     }
   },
 
@@ -129,31 +126,54 @@ export const KnowledgeSchemas = {
     type: 'object',
     properties: {
       success: { type: 'boolean', example: true },
-      data: { $ref: '#/components/schemas/KnowledgeItemResponse' }
+      uuid: { type: 'string', description: 'Created item UUID' }
     }
   },
 
   GetKnowledgeItemResponse: {
     type: 'object',
     properties: {
-      success: { type: 'boolean', example: true },
-      data: { $ref: '#/components/schemas/KnowledgeItemResponse' }
+      uuid: { type: 'string', description: 'Item UUID' },
+      parent_uuid: { type: 'string', description: 'Parent item UUID' },
+      company_uuid: { type: 'string', description: 'Company UUID' },
+      title: { type: 'string', description: 'Item title' },
+      description: { type: 'string', description: 'Item description' },
+      type: { type: 'string', description: 'Item type' },
+      content: { type: 'string', description: 'Item content' },
+      file_url: { type: 'string', description: 'File/URL' },
+      file_size: { type: 'integer', description: 'File size in bytes' },
+      file_type: { type: 'string', description: 'MIME type' },
+      metadata: { type: 'object', description: 'Additional metadata' },
+      created_by: { type: 'string', description: 'User who created the item' }
     }
   },
 
   UpdateKnowledgeItemResponse: {
     type: 'object',
     properties: {
-      success: { type: 'boolean', example: true },
-      data: { $ref: '#/components/schemas/KnowledgeItemResponse' }
+      success: { type: 'boolean', example: true }
     }
   },
 
   SearchKnowledgeResponse: {
     type: 'object',
     properties: {
-      success: { type: 'boolean', example: true },
-      data: { $ref: '#/components/schemas/KnowledgeSearchResponse' }
+      query: { type: 'string', description: 'Original search query' },
+      results: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            uuid: { type: 'string', description: 'Item UUID' },
+            title: { type: 'string', description: 'Item title' },
+            description: { type: 'string', description: 'Item description' },
+            content: { type: 'string', description: 'Item content' },
+            type: { type: 'string', description: 'Item type' },
+            score: { type: 'number', description: 'Relevance score' },
+            metadata: { type: 'object', description: 'Additional metadata' }
+          }
+        }
+      }
     }
   }
 };

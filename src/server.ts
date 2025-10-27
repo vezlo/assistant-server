@@ -527,7 +527,7 @@ app.get('/api/knowledge/items', authenticateUser(supabase), (req, res) => knowle
  *   post:
  *     summary: Search knowledge base
  *     description: Search the knowledge base for relevant items
- *     tags: [Knowledge Base]
+ *     tags: [Search]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -558,7 +558,7 @@ app.post('/api/knowledge/search', authenticateUser(supabase), (req, res) => know
  *   post:
  *     summary: RAG search
  *     description: Perform Retrieval-Augmented Generation search
- *     tags: [Knowledge Base]
+ *     tags: [Search]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
