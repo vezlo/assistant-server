@@ -277,13 +277,29 @@ app.delete('/api/knowledge/items/:uuid', requireServices, requireAuth, (req, res
 // Migration APIs (for development/setup)
 app.get('/api/migrate', requireServices, async (req, res) => {
   try {
-    const { runMigrations } = await import('../dist/src/services/MigrationService');
-    const result = await runMigrations();
-    res.json({
-      success: true,
-      message: 'Migrations completed successfully',
-      data: result
-    });
+    // Extract API key from query or header
+    const apiKey = req.query.key || req.headers['x-migration-key'];
+
+    if (!apiKey) {
+      res.status(400).json({
+        success: false,
+        message: 'Migration API key is required',
+        error: 'MISSING_API_KEY',
+        details: {
+          usage: 'Add ?key=your-secret-key to the URL or x-migration-key header'
+        }
+      });
+      return;
+    }
+
+    const { MigrationService } = await import('../dist/src/services/MigrationService');
+    const result = await MigrationService.runMigrations(apiKey);
+
+    const statusCode = result.success ? 200 :
+      result.error === 'UNAUTHORIZED' ? 401 :
+      result.error === 'MISSING_ENV_VARS' || result.error === 'DATABASE_CONNECTION_FAILED' ? 400 : 500;
+
+    res.status(statusCode).json(result);
   } catch (error) {
     logger.error('Migration error:', error);
     res.status(500).json({
@@ -299,15 +315,28 @@ app.get('/api/migrate', requireServices, async (req, res) => {
 
 app.get('/api/migrate/status', requireServices, async (req, res) => {
   try {
-    const { getMigrationStatus } = await import('../dist/src/config/knex');
-    const lastMigration = await getMigrationStatus();
-    res.json({
-      success: true,
-      data: {
-        lastMigration,
-        timestamp: new Date().toISOString()
-      }
-    });
+    // Extract API key from query or header
+    const apiKey = req.query.key || req.headers['x-migration-key'];
+
+    if (!apiKey) {
+      res.status(400).json({
+        success: false,
+        message: 'Migration API key is required',
+        error: 'MISSING_API_KEY',
+        details: {
+          usage: 'Add ?key=your-secret-key to the URL or x-migration-key header'
+        }
+      });
+      return;
+    }
+
+    const { MigrationService } = await import('../dist/src/services/MigrationService');
+    const result = await MigrationService.getStatus(apiKey);
+
+    const statusCode = result.success ? 200 :
+      result.error === 'UNAUTHORIZED' ? 401 : 500;
+
+    res.status(statusCode).json(result);
   } catch (error) {
     logger.error('Migration status error:', error);
     res.status(500).json({

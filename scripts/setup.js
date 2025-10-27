@@ -125,8 +125,9 @@ async function main() {
   log('\nNext steps:');
   log('  1. Review your .env file');
   if (migrationStatus.migrations !== 'success') {
+    log('\n⚠️  IMPORTANT: Migrations were not run. You must run migrations first before seeding default data.', 'yellow');
     log('  2. Run database migrations: ' + colors.bright + 'npm run migrate:latest' + colors.reset);
-    log('  3. Setup default data: ' + colors.bright + 'npm run seed-default' + colors.reset);
+    log('  3. Then run seed: ' + colors.bright + 'npm run seed-default' + colors.reset + ' (only after migrations complete)', 'yellow');
     log('  4. Start the server: ' + colors.bright + 'vezlo-server' + colors.reset);
     log('  5. Visit: ' + colors.bright + 'http://localhost:3000/health' + colors.reset);
     log('  6. API docs: ' + colors.bright + 'http://localhost:3000/docs' + colors.reset);
@@ -184,14 +185,22 @@ async function setupSupabase() {
     const client = createClient(supabaseUrl.trim(), supabaseServiceKey.trim());
     const { error } = await client.from('vezlo_conversations').select('count').limit(0);
 
-    if (error && error.code !== 'PGRST116') {
-      throw error;
+    if (error) {
+      // Check for table not found errors (normal before migrations run)
+      if (error.code === 'PGRST116' || 
+          error.message.includes('does not exist') ||
+          error.message.includes('Could not find the table')) {
+        log('✅ Supabase connection successful!', 'green');
+        log('⚠️  Note: Table not found - this is normal before running migrations\n', 'yellow');
+      } else {
+        throw error;
+      }
+    } else {
+      log('✅ Supabase connection successful!\n', 'green');
     }
-
-    log('✅ Supabase connection successful!\n', 'green');
   } catch (err) {
     log(`❌ Supabase connection failed: ${err.message}`, 'red');
-    log('⚠️  Continuing setup. You can fix credentials and rerun validations later.', 'yellow');
+    log('⚠️  This might be because migrations haven\'t run yet, or check your credentials.', 'yellow');
   }
 
   // Validate database connection (same as validate script)
@@ -333,11 +342,19 @@ async function validateEnvironment(config) {
     const client = createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_KEY);
     const { error } = await client.from('vezlo_conversations').select('count').limit(0);
     
-    if (error && error.code !== 'PGRST116') {
-      throw error;
+    if (error) {
+      // Check for table not found errors (normal before migrations run)
+      if (error.code === 'PGRST116' || 
+          error.message.includes('does not exist') ||
+          error.message.includes('Could not find the table')) {
+        log('✅ Supabase API connection validated', 'green');
+        log('⚠️  Note: Table not found - this is normal before running migrations', 'yellow');
+      } else {
+        throw error;
+      }
+    } else {
+      log('✅ Supabase API connection validated', 'green');
     }
-    
-    log('✅ Supabase API connection validated', 'green');
   } catch (err) {
     log(`❌ Supabase API validation failed: ${err.message}`, 'red');
     // non-blocking; proceed to DB check anyway
@@ -433,9 +450,10 @@ async function setupMigrations(config, validationStatus) {
         log('✅ Migrations completed successfully!', 'green');
         return { migrations: 'success' };
       } else {
-        log('\n⚠️  Migrations skipped. You can run them later using:', 'yellow');
-        log('   npm run migrate:latest', 'cyan');
-        log('   Or via API: GET /api/migrate?key=your-migration-secret\n', 'cyan');
+        log('\n⚠️  Migrations skipped by user.', 'yellow');
+        log('   You can run them later using: ' + colors.cyan + 'npm run migrate:latest' + colors.reset, 'yellow');
+        log('   Or via API: ' + colors.cyan + 'GET /api/migrate?key=your-migration-secret' + colors.reset, 'yellow');
+        log('\n   ⚠️  Note: Default data seeding will be skipped until migrations are run.\n', 'yellow');
         return { migrations: 'skipped' };
       }
     } else {
@@ -455,11 +473,20 @@ async function setupMigrations(config, validationStatus) {
         execSync('npm run migrate:latest', { stdio: 'inherit' });
         
         log('✅ Migration check completed!', 'green');
+        await client.end();
         return { migrations: 'success' };
+      } else {
+        log('⚠️  Migration check skipped by user.', 'yellow');
+        log('   You can run them later using: ' + colors.cyan + 'npm run migrate:latest' + colors.reset, 'yellow');
+        log('   Or via API: ' + colors.cyan + 'GET /api/migrate?key=your-migration-secret' + colors.reset, 'yellow');
+        log('\n   ⚠️  Note: Default data seeding will be skipped until migrations are run.\n', 'yellow');
+        await client.end();
+        return { migrations: 'skipped' };
       }
     }
 
     await client.end();
+    return { migrations: 'skipped' };
   } catch (err) {
     log(`❌ Migration setup failed: ${err.message}`, 'red');
     log('\nYou can run migrations manually later:', 'yellow');

@@ -57,14 +57,23 @@ async function validateDatabase() {
       process.env.SUPABASE_SERVICE_KEY
     );
 
-    // Try to query a table
+    // Try to query any table (query will fail if connection is bad)
     const { error } = await supabase.from('vezlo_conversations').select('count').limit(0);
 
-    if (error && error.code !== 'PGRST116') {
-      throw error;
+    if (error) {
+      // Check for table not found errors (normal before migrations run)
+      if (error.code === 'PGRST116' || 
+          error.message.includes('does not exist') ||
+          error.message.includes('Could not find the table')) {
+        log('✅ Supabase connection successful', 'green');
+        log('⚠️  Note: Tables not found yet - this is normal before running migrations\n', 'yellow');
+      } else {
+        // Only throw if it's a real connection error
+        throw error;
+      }
+    } else {
+      log('✅ Supabase connection successful\n', 'green');
     }
-
-    log('✅ Supabase connection successful\n', 'green');
 
   } catch (error) {
     log(`❌ Supabase connection failed: ${error.message}\n`, 'red');
@@ -96,6 +105,10 @@ async function validateDatabase() {
 
     // Check required tables
     const requiredTables = [
+      'vezlo_companies',
+      'vezlo_users',
+      'vezlo_user_company_profiles',
+      'vezlo_api_keys',
       'vezlo_conversations',
       'vezlo_messages',
       'vezlo_message_feedback',
@@ -142,7 +155,10 @@ async function validateDatabase() {
       ORDER BY t.table_name
     `, [requiredTables]);
 
-    log('\n📊 Table Structure:', 'cyan');
+    log('\n📊 Database Tables Summary:', 'cyan');
+    log(`   Total tables found: ${schemaCheck.rows.length}`, 'green');
+    
+    log('\n📋 Table Details:', 'cyan');
     schemaCheck.rows.forEach(row => {
       log(`   ✓ ${row.table_name} (${row.column_count} columns)`, 'green');
     });

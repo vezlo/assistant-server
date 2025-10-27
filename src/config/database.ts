@@ -18,6 +18,14 @@ export function initializeSupabase(): SupabaseClient {
     auth: {
       autoRefreshToken: false,
       persistSession: false
+    },
+    db: {
+      schema: 'public'
+    },
+    global: {
+      headers: {
+        'x-connection-string': supabaseUrl
+      }
     }
   });
 

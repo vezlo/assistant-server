@@ -19,6 +19,11 @@ async function runDefaultSetup() {
 
     // Initialize Supabase
     const supabase = initializeSupabase();
+    
+    // Wait for schema cache to refresh (Supabase needs time after migrations)
+    console.log('⏳ Waiting for schema cache to refresh...');
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
     const setupService = new SetupService(supabase);
 
     // Check if setup is already completed

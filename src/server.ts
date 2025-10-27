@@ -85,19 +85,22 @@ async function initializeServices() {
     // Initialize storage
     const storage = new UnifiedStorage(supabase, 'vezlo');
 
-    // Initialize services
+    // Initialize knowledge base first
+    const knowledgeBase = new KnowledgeBaseService({ 
+      supabase, 
+      tableName: 'vezlo_knowledge_items' 
+    });
+
+    // Initialize AI service with knowledge base
     const aiService = new AIService({
       openaiApiKey: process.env.OPENAI_API_KEY!,
       organizationName: process.env.ORGANIZATION_NAME || 'Vezlo',
       assistantName: process.env.ASSISTANT_NAME || 'AI Assistant',
       platformDescription: process.env.PLATFORM_DESCRIPTION || 'AI-powered assistant platform',
-      supportEmail: process.env.SUPPORT_EMAIL || 'support@vezlo.com'
+      supportEmail: process.env.SUPPORT_EMAIL || 'support@vezlo.com',
+      knowledgeBaseService: knowledgeBase
     });
     const chatManager = new ChatManager({ aiService, storage });
-    const knowledgeBase = new KnowledgeBaseService({ 
-      supabase, 
-      tableName: 'vezlo_knowledge_items' 
-    });
 
     // Initialize controllers
     chatController = new ChatController(chatManager, storage);
@@ -692,8 +695,17 @@ app.put('/api/knowledge/items/:uuid', authenticateUser(supabase), (req, res) => 
    * /api/migrate:
    *   get:
    *     summary: Run database migrations
-   *     description: Run pending database migrations
+   *     description: Run pending database migrations. Requires migration secret key.
    *     tags: [System]
+   *     parameters:
+   *       - in: query
+   *         name: key
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Migration secret key from MIGRATION_SECRET_KEY environment variable
+   *     security:
+   *       - migrationKey: []
    *     responses:
    *       200:
    *         description: Migrations completed successfully
@@ -704,23 +716,82 @@ app.put('/api/knowledge/items/:uuid', authenticateUser(supabase), (req, res) => 
    *               properties:
    *                 success:
    *                   type: boolean
+   *                   example: true
    *                 message:
    *                   type: string
-   *                 migrations:
-   *                   type: array
-   *                   items:
-   *                     type: string
+   *                   example: "Migrations completed successfully"
+   *                 currentVersion:
+   *                   type: string
+   *                   example: "002_multitenancy_schema.ts"
+   *                 previousVersion:
+   *                   type: string
+   *                   example: "001_initial_schema.ts"
+   *                 details:
+   *                   type: object
+   *                   properties:
+   *                     timestamp:
+   *                       type: string
+   *                       format: date-time
+   *       400:
+   *         description: Missing API key or invalid configuration
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 message:
+   *                   type: string
+   *                   example: "Migration API key is required"
+   *                 error:
+   *                   type: string
+   *                   example: "MISSING_API_KEY"
+   *       401:
+   *         description: Unauthorized - Invalid migration key
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 message:
+   *                   type: string
+   *                   example: "Invalid or missing migration API key"
+   *                 error:
+   *                   type: string
+   *                   example: "UNAUTHORIZED"
    *       500:
    *         description: Migration failed
    */
   app.get('/api/migrate', asyncHandler(async (req: any, res: any) => {
-    const result = await runMigrations();
-    
-    res.json({
-      success: true,
-      message: 'Migrations completed successfully',
-      migrations: result
-    });
+    // Extract API key from query or header
+    const apiKey = req.query.key || req.headers['x-migration-key'];
+
+    if (!apiKey) {
+      res.status(400).json({
+        success: false,
+        message: 'Migration API key is required',
+        error: 'MISSING_API_KEY',
+        details: {
+          usage: 'Add ?key=your-secret-key to the URL or x-migration-key header'
+        }
+      });
+      return;
+    }
+
+    // Import MigrationService to use the proper validation
+    const { MigrationService } = await import('./services/MigrationService');
+    const result = await MigrationService.runMigrations(apiKey);
+
+    const statusCode = result.success ? 200 :
+      result.error === 'UNAUTHORIZED' ? 401 :
+      result.error === 'MISSING_ENV_VARS' || result.error === 'DATABASE_CONNECTION_FAILED' ? 400 : 500;
+
+    res.status(statusCode).json(result);
   }));
 
   /**
@@ -728,8 +799,17 @@ app.put('/api/knowledge/items/:uuid', authenticateUser(supabase), (req, res) => 
    * /api/migrate/status:
    *   get:
    *     summary: Get migration status
-   *     description: Get the current status of database migrations
+   *     description: Get the current status of database migrations. Requires migration secret key.
    *     tags: [System]
+   *     parameters:
+   *       - in: query
+   *         name: key
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Migration secret key from MIGRATION_SECRET_KEY environment variable
+   *     security:
+   *       - migrationKey: []
    *     responses:
    *       200:
    *         description: Migration status retrieved
@@ -740,21 +820,78 @@ app.put('/api/knowledge/items/:uuid', authenticateUser(supabase), (req, res) => 
    *               properties:
    *                 success:
    *                   type: boolean
+   *                   example: true
    *                 status:
    *                   type: string
-   *                 lastMigration:
+   *                   example: "completed"
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     currentVersion:
+   *                       type: string
+   *                       example: "002_multitenancy_schema.ts"
+   *                     timestamp:
+   *                       type: string
+   *                       format: date-time
+   *       400:
+   *         description: Missing API key
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 message:
    *                   type: string
+   *                   example: "Migration API key is required"
+   *                 error:
+   *                   type: string
+   *                   example: "MISSING_API_KEY"
+   *       401:
+   *         description: Unauthorized - Invalid migration key
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 message:
+   *                   type: string
+   *                   example: "Invalid or missing migration API key"
+   *                 error:
+   *                   type: string
+   *                   example: "UNAUTHORIZED"
    *       500:
    *         description: Failed to get migration status
    */
   app.get('/api/migrate/status', asyncHandler(async (req: any, res: any) => {
-    const lastMigration = await getMigrationStatus();
-    
-    res.json({
-      success: true,
-      status: 'completed',
-      lastMigration: lastMigration.toString()
-    });
+    // Extract API key from query or header
+    const apiKey = req.query.key || req.headers['x-migration-key'];
+
+    if (!apiKey) {
+      res.status(400).json({
+        success: false,
+        message: 'Migration API key is required',
+        error: 'MISSING_API_KEY',
+        details: {
+          usage: 'Add ?key=your-secret-key to the URL or x-migration-key header'
+        }
+      });
+      return;
+    }
+
+    // Import MigrationService to use the proper validation
+    const { MigrationService } = await import('./services/MigrationService');
+    const result = await MigrationService.getStatus(apiKey);
+
+    const statusCode = result.success ? 200 :
+      result.error === 'UNAUTHORIZED' ? 401 : 500;
+
+    res.status(statusCode).json(result);
   }));
 
   // Error handling middleware (must be after all routes)

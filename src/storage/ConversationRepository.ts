@@ -31,7 +31,7 @@ export class ConversationRepository {
         .single();
 
       if (error) throw new Error(`Failed to update conversation: ${error.message}`);
-      return this.rowToConversation(data);
+      return await this.rowToConversation(data);
     } else {
       // Create new conversation
       // Convert string IDs to integers (dummy IDs for now)
@@ -52,7 +52,7 @@ export class ConversationRepository {
         .single();
 
       if (error) throw new Error(`Failed to create conversation: ${error.message}`);
-      return this.rowToConversation(data);
+      return await this.rowToConversation(data);
     }
   }
 
@@ -70,7 +70,7 @@ export class ConversationRepository {
       throw new Error(`Failed to get conversation: ${error.message}`);
     }
 
-    return this.rowToConversation(data);
+    return this.rowToConversation(data, true);
   }
 
   async updateConversation(conversationId: string, updates: Partial<ChatConversation>): Promise<ChatConversation> {
@@ -89,7 +89,7 @@ export class ConversationRepository {
       .single();
 
     if (error) throw new Error(`Failed to update conversation: ${error.message}`);
-    return this.rowToConversation(data);
+    return await this.rowToConversation(data);
   }
 
   async deleteConversation(conversationId: string): Promise<boolean> {
@@ -121,16 +121,55 @@ export class ConversationRepository {
 
     if (error) throw new Error(`Failed to get user conversations: ${error.message}`);
     
-    return (data || []).map(row => this.rowToConversation(row));
+    // Note: getUserConversations doesn't need UUIDs since we're using the internal ID for filtering
+    // The ChatController handles the response mapping
+    return (data || []).map(row => ({
+      id: row.uuid,
+      threadId: row.uuid,
+      title: row.title,
+      userId: row.creator_id?.toString() || '1',
+      organizationId: row.company_id?.toString(),
+      messageCount: row.message_count || 0,
+      createdAt: new Date(row.created_at),
+      updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(row.created_at)
+    }));
   }
 
-  private rowToConversation(row: any): ChatConversation {
+  private async rowToConversation(row: any, fetchUuids: boolean = false): Promise<ChatConversation> {
+    let userId = row.creator_id?.toString() || '1';
+    let organizationId = row.company_id?.toString();
+
+    // Fetch actual UUIDs if needed
+    if (fetchUuids && row.creator_id) {
+      const { data: userData } = await this.supabase
+        .from(this.getTableName('users'))
+        .select('uuid')
+        .eq('id', row.creator_id)
+        .single();
+      
+      if (userData) {
+        userId = userData.uuid;
+      }
+    }
+
+    if (fetchUuids && row.company_id) {
+      const { data: companyData } = await this.supabase
+        .from(this.getTableName('companies'))
+        .select('uuid')
+        .eq('id', row.company_id)
+        .single();
+      
+      if (companyData) {
+        organizationId = companyData.uuid;
+      }
+    }
+
     return {
       id: row.uuid,
       threadId: row.uuid, // Use UUID as threadId for conversations
       title: row.title,
-      userId: row.creator_id?.toString() || '1',
-      organizationId: row.company_id?.toString(),
+      userId,
+      organizationId,
       messageCount: row.message_count || 0,
       createdAt: new Date(row.created_at),
       updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(row.created_at)

@@ -95,10 +95,14 @@ ${this.knowledgeBase}
     return prompt;
   }
 
-  async generateResponse(message: string, context?: ChatContext): Promise<AIResponse> {
+  async generateResponse(message: string, context?: ChatContext | any): Promise<AIResponse> {
     try {
       let knowledgeResults: string = '';
-      if (this.knowledgeBaseService) {
+      
+      // Check if knowledge results are already provided in context
+      if (context?.knowledgeResults) {
+        knowledgeResults = context.knowledgeResults;
+      } else if (this.knowledgeBaseService) {
         const searchResults = await this.knowledgeBaseService.search(message, {
           limit: 3,
           type: 'hybrid'
@@ -120,7 +124,7 @@ ${this.knowledgeBase}
       ];
 
       if (context?.conversationHistory) {
-        messages.push(...context.conversationHistory.map(msg => ({
+        messages.push(...context.conversationHistory.map((msg: any) => ({
           role: msg.role,
           content: msg.content
         })));

@@ -297,8 +297,19 @@ export class KnowledgeController {
         company_id: req.profile?.companyId ? parseInt(req.profile.companyId) : undefined
       });
 
-      // Generate AI response using the search results
-      const aiResponse = await this.aiService.generateResponse(query);
+      // Format search results for AI context
+      let knowledgeContext = '';
+      if (searchResults.length > 0) {
+        knowledgeContext = '\n\nRelevant information from knowledge base:\n';
+        searchResults.forEach(result => {
+          knowledgeContext += `- ${result.title}: ${result.content}\n`;
+        });
+      }
+
+      // Generate AI response with knowledge context
+      const aiResponse = await (this.aiService as any).generateResponse(query, {
+        knowledgeResults: knowledgeContext
+      });
 
       res.json({
         response: aiResponse.content

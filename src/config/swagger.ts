@@ -61,8 +61,14 @@ const options = {
         apiKeyAuth: {
           type: 'apiKey',
           in: 'header',
-          name: 'X-API-Key',
-          description: 'API key for service-to-service authentication'
+          name: 'x-api-key',
+          description: 'API key for service authentication'
+        },
+        migrationKey: {
+          type: 'apiKey',
+          in: 'query',
+          name: 'key',
+          description: 'Migration secret key from MIGRATION_SECRET_KEY environment variable'
         }
       },
 

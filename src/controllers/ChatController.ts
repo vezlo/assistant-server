@@ -102,7 +102,7 @@ export class ChatController {
   }
 
   // Generate AI response for a user message
-  async generateResponse(req: Request, res: Response): Promise<void> {
+  async generateResponse(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { uuid } = req.params;
 
@@ -120,17 +120,52 @@ export class ChatController {
       // Get conversation context (recent messages)
       const messages = await this.storage.getMessages(conversationId, 10);
       
+      // Get knowledge base search results if available
+      const aiService = (this.chatManager as any).aiService;
+      let knowledgeResults = '';
+      
+      if (aiService && aiService.knowledgeBaseService) {
+        try {
+          console.log('🔍 Searching knowledge base for:', userMessageContent);
+          console.log('🔑 Company ID:', req.profile?.companyId);
+          
+          const searchResults = await aiService.knowledgeBaseService.search(userMessageContent, {
+            limit: 3,
+            threshold: 0.7,
+            type: 'hybrid',
+            company_id: req.profile?.companyId ? parseInt(req.profile.companyId) : undefined
+          });
+
+          console.log('📊 Found knowledge base results:', searchResults.length);
+
+          if (searchResults.length > 0) {
+            knowledgeResults = '\n\nRelevant information from knowledge base:\n';
+            searchResults.forEach((result: any) => {
+              knowledgeResults += `- ${result.title}: ${result.content}\n`;
+            });
+            console.log('✅ Knowledge context prepared:', knowledgeResults.substring(0, 200));
+          } else {
+            console.log('⚠️  No knowledge base results found');
+          }
+        } catch (error) {
+          console.error('❌ Failed to search knowledge base:', error);
+          logger.error('Failed to search knowledge base:', error);
+        }
+      } else {
+        console.log('⚠️  AI service or knowledge base service not available');
+      }
+      
       // Build context for AI
       const chatContext = {
         conversationHistory: messages.map(msg => ({
           role: msg.role as 'user' | 'assistant' | 'system',
-          content: msg.content,
-          createdAt: msg.createdAt
-        }))
+          content: msg.content
+        })),
+        knowledgeResults
       };
 
       // Generate AI response using the actual user message content
-      const response = await (this.chatManager as any).aiService.generateResponse(userMessageContent, chatContext);
+      const response = await aiService.generateResponse(userMessageContent, chatContext);
 
       // Save AI message to database
       // Note: The storage layer will handle UUID to internal ID conversion
