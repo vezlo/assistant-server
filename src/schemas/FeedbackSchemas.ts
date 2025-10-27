@@ -118,7 +118,19 @@ export const FeedbackSchemas = {
     type: 'object',
     properties: {
       success: { type: 'boolean', example: true },
-      data: { $ref: '#/components/schemas/FeedbackResponse' }
+      feedback: {
+        type: 'object',
+        properties: {
+          uuid: { type: 'string', description: 'Feedback UUID' },
+          message_uuid: { type: 'string', description: 'Message UUID' },
+          rating: { type: 'string', description: 'Rating (positive/negative)' },
+          category: { type: 'string', description: 'Category' },
+          comment: { type: 'string', description: 'Comment' },
+          suggested_improvement: { type: 'string', description: 'Suggested improvement' },
+          created_at: { type: 'string', format: 'date-time' }
+        },
+        required: ['uuid', 'message_uuid', 'rating', 'created_at']
+      }
     }
   }
 };

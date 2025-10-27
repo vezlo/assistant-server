@@ -64,7 +64,7 @@ export const JWTUtils = {
     };
 
     return jwt.sign(payload, process.env.JWT_SECRET!, {
-      expiresIn: '1h',
+      // No expiration - token is invalidated via token_updated_at check
       issuer: 'vezlo-assistant'
     });
   },

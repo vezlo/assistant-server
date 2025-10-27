@@ -79,19 +79,6 @@ export class InternalServerError extends Error {
   }
 }
 
-// Error response interface
-interface ErrorResponse {
-  error: {
-    code: string;
-    message: string;
-    details?: any;
-    timestamp: string;
-    path: string;
-    method: string;
-  };
-  success: false;
-}
-
 // Main error handler middleware
 export const errorHandler = (
   err: ApiError,
@@ -147,24 +134,25 @@ export const errorHandler = (
     message = 'Referenced resource does not exist';
   }
 
-  // Prepare error response
-  const errorResponse: ErrorResponse = {
-    error: {
+  // Prepare error response - simplified to just the message
+  const errorResponse = {
+    error: message
+  };
+
+  // Log details in development/detailed error mode (but don't send to client)
+  if (config.validation.returnDetailedErrors) {
+    const errorDetails = details || {
+      stack: err.stack,
+      originalError: err.message
+    };
+    console.error('Error details:', {
       code,
       message,
       timestamp: new Date().toISOString(),
       path: req.path,
-      method: req.method
-    },
-    success: false
-  };
-
-  // Add details in development/detailed error mode
-  if (config.validation.returnDetailedErrors) {
-    errorResponse.error.details = details || {
-      stack: err.stack,
-      originalError: err.message
-    };
+      method: req.method,
+      details: errorDetails
+    });
   }
 
   // Log error (but not for client errors like 400, 401, 403, 404)
@@ -190,15 +178,8 @@ export const errorHandler = (
 
 // 404 handler for undefined routes
 export const notFoundHandler = (req: Request, res: Response): void => {
-  const errorResponse: ErrorResponse = {
-    error: {
-      code: 'ENDPOINT_NOT_FOUND',
-      message: `Endpoint ${req.method} ${req.path} not found`,
-      timestamp: new Date().toISOString(),
-      path: req.path,
-      method: req.method
-    },
-    success: false
+  const errorResponse = {
+    error: `Endpoint ${req.method} ${req.path} not found`
   };
 
   res.status(404).json(errorResponse);

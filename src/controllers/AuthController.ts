@@ -12,7 +12,7 @@ export class AuthController {
   // Login endpoint
   async login(req: any, res: any): Promise<void> {
     try {
-      const { email, password, company_domain } = req.body;
+      const { email, password } = req.body;
 
       if (!email || !password) {
         res.status(400).json({ error: 'email and password are required' });
@@ -41,17 +41,10 @@ export class AuthController {
         return;
       }
 
-      // If company_domain is provided, find matching profile
-      let selectedProfile = profiles[0]; // Default to first profile
-      
-      if (company_domain) {
-        const domainProfile = profiles.find(p => p.companies.domain === company_domain);
-        if (domainProfile) {
-          selectedProfile = domainProfile;
-        }
-      }
+      // Use first profile (default to first available company)
+      const selectedProfile = profiles[0];
 
-      // Generate tokens
+      // Generate token
       const { JWTUtils } = await import('../middleware/auth');
       const accessToken = JWTUtils.generateToken(
         selectedProfile.id.toString(),
@@ -61,35 +54,8 @@ export class AuthController {
         selectedProfile.role
       );
 
-      const refreshToken = JWTUtils.generateRefreshToken(
-        selectedProfile.id.toString(),
-        user.id.toString(),
-        selectedProfile.company_id.toString(),
-        user.token_updated_at,
-        selectedProfile.role
-      );
-
       res.json({
-        success: true,
-        access_token: accessToken,
-        refresh_token: refreshToken,
-        user: {
-          id: user.uuid,
-          email: user.email,
-          name: user.name
-        },
-        profile: {
-          id: selectedProfile.uuid,
-          company_id: selectedProfile.companies.uuid,
-          company_name: selectedProfile.companies.name,
-          role: selectedProfile.role
-        },
-        available_companies: profiles.map(p => ({
-          id: p.companies.uuid,
-          name: p.companies.name,
-          domain: p.companies.domain,
-          role: p.role
-        }))
+        access_token: accessToken
       });
 
     } catch (error) {
@@ -136,13 +102,13 @@ export class AuthController {
 
       res.json({
         user: {
-          id: req.user.uuid,
+          uuid: req.user.uuid,
           email: req.user.email,
           name: req.user.name
         },
         profile: {
-          id: req.profile.uuid,
-          company_id: req.profile.companyUuid,
+          uuid: req.profile.uuid,
+          company_uuid: req.profile.companyUuid,
           company_name: req.profile.companyName,
           role: req.profile.role
         }
@@ -152,67 +118,6 @@ export class AuthController {
       logger.error('Get me error:', error);
       res.status(500).json({
         error: 'Failed to get user info',
-        message: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-  }
-
-  // Refresh token endpoint
-  async refreshToken(req: any, res: any): Promise<void> {
-    try {
-      const { refresh_token } = req.body;
-
-      if (!refresh_token) {
-        res.status(400).json({ error: 'refresh_token is required' });
-        return;
-      }
-
-      // Verify refresh token
-      const { JWTUtils } = await import('../middleware/auth');
-      const decoded = JWTUtils.verifyToken(refresh_token);
-      
-      // Check if it's actually a refresh token
-      if ((decoded as any).type !== 'refresh') {
-        res.status(401).json({ error: 'Invalid refresh token' });
-        return;
-      }
-
-      // Get user and profile data
-      const [user, profile] = await Promise.all([
-        this.getUserById(decoded.user_id),
-        this.getProfileById(decoded.user_company_profile_id)
-      ]);
-
-      // Check if token is still valid (not logged out)
-      if (user.token_updated_at !== decoded.user_token_updated_at) {
-        res.status(401).json({ error: 'Refresh token has been invalidated' });
-        return;
-      }
-
-      // Check if profile is active
-      if (profile.status !== 'active') {
-        res.status(401).json({ error: 'Profile is inactive' });
-        return;
-      }
-
-      // Generate new access token
-      const accessToken = JWTUtils.generateToken(
-        profile.id.toString(),
-        user.id.toString(),
-        profile.company_id.toString(),
-        user.token_updated_at,
-        profile.role
-      );
-
-      res.json({
-        success: true,
-        access_token: accessToken
-      });
-
-    } catch (error) {
-      logger.error('Refresh token error:', error);
-      res.status(401).json({
-        error: 'Failed to refresh token',
         message: error instanceof Error ? error.message : 'Unknown error'
       });
     }

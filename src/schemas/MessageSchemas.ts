@@ -35,9 +35,7 @@ export const MessageSchemas = {
       type: { type: 'string', enum: ['user', 'assistant', 'system'], description: 'Message type' },
       content: { type: 'string', description: 'Message content' },
       status: { type: 'string', enum: ['generating', 'completed', 'stopped', 'failed'], description: 'Message status' },
-      metadata: { type: 'object', description: 'Additional message metadata' },
-      created_at: { type: 'string', format: 'date-time' },
-      updated_at: { type: 'string', format: 'date-time' }
+      created_at: { type: 'string', format: 'date-time' }
     }
   },
 
@@ -81,16 +79,23 @@ export const MessageSchemas = {
   SendMessageResponse: {
     type: 'object',
     properties: {
-      success: { type: 'boolean', example: true },
-      data: { $ref: '#/components/schemas/MessageResponse' }
+      uuid: { type: 'string', description: 'Message UUID' },
+      conversation_uuid: { type: 'string', description: 'Conversation UUID' },
+      type: { type: 'string', enum: ['user', 'assistant', 'system'], description: 'Message type' },
+      content: { type: 'string', description: 'Message content' },
+      created_at: { type: 'string', format: 'date-time' }
     }
   },
 
   GenerateResponseResponse: {
     type: 'object',
     properties: {
-      success: { type: 'boolean', example: true },
-      data: { $ref: '#/components/schemas/GenerateMessageResponse' }
+      uuid: { type: 'string', description: 'Generated message UUID' },
+      parent_message_uuid: { type: 'string', description: 'Parent message UUID' },
+      type: { type: 'string', enum: ['assistant'], description: 'Message type' },
+      content: { type: 'string', description: 'Generated content' },
+      status: { type: 'string', enum: ['completed', 'failed'], description: 'Generation status' },
+      created_at: { type: 'string', format: 'date-time' }
     }
   }
 };

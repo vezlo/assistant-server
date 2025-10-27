@@ -30,8 +30,7 @@ export const ConversationSchemas = {
       uuid: { type: 'string', description: 'Conversation UUID' },
       title: { type: 'string', description: 'Conversation title' },
       message_count: { type: 'integer', description: 'Number of messages' },
-      created_at: { type: 'string', format: 'date-time' },
-      updated_at: { type: 'string', format: 'date-time' }
+      created_at: { type: 'string', format: 'date-time' }
     }
   },
 
@@ -40,9 +39,10 @@ export const ConversationSchemas = {
     properties: {
       uuid: { type: 'string', description: 'Conversation UUID' },
       title: { type: 'string', description: 'Conversation title' },
+      user_uuid: { type: 'string', description: 'User UUID' },
+      company_uuid: { type: 'string', description: 'Company UUID' },
       message_count: { type: 'integer', description: 'Number of messages' },
       created_at: { type: 'string', format: 'date-time' },
-      updated_at: { type: 'string', format: 'date-time' },
       messages: {
         type: 'array',
         items: { $ref: '#/components/schemas/MessageResponse' }
@@ -66,16 +66,26 @@ export const ConversationSchemas = {
   CreateConversationResponse: {
     type: 'object',
     properties: {
-      success: { type: 'boolean', example: true },
-      data: { $ref: '#/components/schemas/ConversationResponse' }
+      uuid: { type: 'string', description: 'Conversation UUID' },
+      title: { type: 'string', description: 'Conversation title' },
+      message_count: { type: 'integer', description: 'Number of messages' },
+      created_at: { type: 'string', format: 'date-time' }
     }
   },
 
   GetConversationResponse: {
     type: 'object',
     properties: {
-      success: { type: 'boolean', example: true },
-      data: { $ref: '#/components/schemas/ConversationWithMessages' }
+      uuid: { type: 'string', description: 'Conversation UUID' },
+      title: { type: 'string', description: 'Conversation title' },
+      user_uuid: { type: 'string', description: 'User UUID' },
+      company_uuid: { type: 'string', description: 'Company UUID' },
+      message_count: { type: 'integer', description: 'Number of messages' },
+      created_at: { type: 'string', format: 'date-time' },
+      messages: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/MessageResponse' }
+      }
     }
   }
 };

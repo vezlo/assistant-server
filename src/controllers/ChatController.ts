@@ -40,8 +40,7 @@ export class ChatController {
         uuid: conversation.id,
         title: conversation.title,
         message_count: conversation.messageCount,
-        created_at: conversation.createdAt,
-        updated_at: conversation.updatedAt
+        created_at: conversation.createdAt
       });
 
     } catch (error) {
@@ -191,7 +190,6 @@ export class ChatController {
         company_uuid: conversation.organizationId,
         message_count: conversation.messageCount,
         created_at: conversation.createdAt,
-        updated_at: conversation.updatedAt,
         messages: messages.map(msg => ({
           uuid: msg.id,
           parent_message_uuid: msg.parentMessageId,
@@ -229,8 +227,7 @@ export class ChatController {
           uuid: conversation.id,
           title: conversation.title,
           message_count: conversation.messageCount,
-          created_at: conversation.createdAt,
-          updated_at: conversation.updatedAt
+          created_at: conversation.createdAt
         }))
       });
 

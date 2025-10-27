@@ -156,49 +156,46 @@ export class MessageRepository {
 
   async getMessageById(messageId: string): Promise<StoredChatMessage | null> {
     const tableName = this.getTableName('messages');
-    const conversationsTable = this.getTableName('conversations');
     
-    const { data, error } = await this.supabase
+    // First get the message
+    const { data: messageData, error: messageError } = await this.supabase
       .from(tableName)
-      .select(`
-        uuid,
-        type,
-        content,
-        status,
-        metadata,
-        parent_message_id,
-        created_at,
-        updated_at,
-        ${conversationsTable}!inner(uuid)
-      `)
+      .select('*')
       .eq('uuid', messageId)
       .single();
 
-    if (error) {
-      if (error.code === 'PGRST116') return null; // Not found
-      throw new Error(`Failed to get message: ${error.message}`);
+    if (messageError) {
+      if (messageError.code === 'PGRST116') return null; // Not found
+      throw new Error(`Failed to get message: ${messageError.message}`);
     }
 
-    if (!data) return null;
+    if (!messageData) return null;
 
-    const metadata = (data as any).metadata || {};
-    const conversationData = (data as any)[conversationsTable] || (data as any).conversations;
-    
-    if (!conversationData || !conversationData.uuid) {
-      throw new Error('Message missing conversation relationship');
+    // Get the conversation UUID by internal ID
+    const conversationsTable = this.getTableName('conversations');
+    const { data: conversationData, error: conversationError } = await this.supabase
+      .from(conversationsTable)
+      .select('uuid')
+      .eq('id', messageData.conversation_id)
+      .single();
+
+    if (conversationError || !conversationData) {
+      throw new Error('Failed to get conversation for message');
     }
+
+    const metadata = messageData.metadata || {};
 
     return {
-      id: (data as any).uuid,
+      id: messageData.uuid,
       conversationId: conversationData.uuid,
       threadId: conversationData.uuid,
-      role: (data as any).type,
-      content: (data as any).content,
+      role: messageData.type,
+      content: messageData.content,
       toolCalls: metadata.tool_calls,
       toolResults: metadata.tool_results,
-      parentMessageId: (data as any).parent_message_id,
-      createdAt: new Date((data as any).created_at),
-      updatedAt: (data as any).updated_at ? new Date((data as any).updated_at) : undefined
+      parentMessageId: messageData.parent_message_id,
+      createdAt: new Date(messageData.created_at),
+      updatedAt: messageData.updated_at ? new Date(messageData.updated_at) : undefined
     };
   }
 }

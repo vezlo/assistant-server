@@ -8,9 +8,11 @@ import { MessageSchemas } from './MessageSchemas';
 import { KnowledgeSchemas } from './KnowledgeSchemas';
 import { FeedbackSchemas } from './FeedbackSchemas';
 import { AuthSchemas } from './AuthSchemas';
+import { CommonSchemas } from './CommonSchemas';
 
 // Combine all schemas for Swagger
 export const AllSchemas = {
+  ...CommonSchemas,
   ...ConversationSchemas,
   ...MessageSchemas,
   ...KnowledgeSchemas,
@@ -20,6 +22,7 @@ export const AllSchemas = {
 
 // Individual exports for specific use
 export {
+  CommonSchemas,
   ConversationSchemas,
   MessageSchemas,
   KnowledgeSchemas,

@@ -199,6 +199,10 @@ app.post('/api/auth/login', (req, res) => authController.login(req, res));
  *     responses:
  *       200:
  *         description: Logout successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/LogoutResponse'
  *       401:
  *         description: Not authenticated
  *       500:
@@ -228,33 +232,6 @@ app.post('/api/auth/logout', authenticateUser(supabase), (req, res) => authContr
  *         description: Internal server error
  */
 app.get('/api/auth/me', authenticateUser(supabase), (req, res) => authController.getMe(req, res));
-
-/**
- * @swagger
- * /api/auth/refresh:
- *   post:
- *     summary: Refresh access token
- *     description: Get new access token using refresh token
- *     tags: [Authentication]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/RefreshTokenRequest'
- *     responses:
- *       200:
- *         description: Token refreshed successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/RefreshTokenResponse'
- *       401:
- *         description: Invalid refresh token
- *       500:
- *         description: Internal server error
- */
-app.post('/api/auth/refresh', (req, res) => authController.refreshToken(req, res));
 
 // Chat API Routes
 /**

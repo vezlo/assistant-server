@@ -249,7 +249,6 @@ const requireAuth = (req: any, res: any, next: any) => {
 app.post('/api/auth/login', requireServices, (req, res) => authController.login(req, res));
 app.post('/api/auth/logout', requireServices, requireAuth, (req, res) => authController.logout(req, res));
 app.get('/api/auth/me', requireServices, requireAuth, (req, res) => authController.getMe(req, res));
-app.post('/api/auth/refresh', requireServices, (req, res) => authController.refreshToken(req, res));
 
 // Conversation APIs
 app.post('/api/conversations', requireServices, requireAuth, (req, res) => chatController.createConversation(req, res));
