@@ -125,8 +125,6 @@ export class MigrationService {
         };
       }
 
-      logger.info('✅ API key validated');
-
       // 2. Validate environment variables
       const envValidation = this.validateEnvironment();
       if (!envValidation.valid) {
@@ -141,8 +139,6 @@ export class MigrationService {
         };
       }
 
-      logger.info('✅ Environment variables validated');
-
       // 3. Test database connection
       const dbTest = await this.testDatabaseConnection();
       if (!dbTest.success) {
@@ -156,21 +152,18 @@ export class MigrationService {
         };
       }
 
-      logger.info('✅ Database connection verified');
-
       // 4. Get current migration status
       const currentVersion = await this.getCurrentMigrationStatus();
       logger.info(`Current migration version: ${currentVersion}`);
 
       // 5. Run migrations
-      logger.info('🚀 Running database migrations...');
+      logger.info('Running database migrations...');
       await runMigrations();
 
       // 6. Get final status
       const finalVersion = await this.getCurrentMigrationStatus();
       
-      logger.info(`✅ Migrations completed successfully`);
-      logger.info(`Version: ${currentVersion} → ${finalVersion}`);
+      logger.info(`Migrations completed successfully. Version: ${currentVersion} → ${finalVersion}`);
 
       return {
         success: true,
@@ -183,7 +176,7 @@ export class MigrationService {
       };
 
     } catch (error: any) {
-      logger.error('❌ Migration failed:', error);
+      logger.error('Migration failed:', error);
       
       return {
         success: false,
@@ -245,7 +238,7 @@ export class MigrationService {
       };
 
     } catch (error: any) {
-      logger.error('❌ Status check failed:', error);
+      logger.error('Status check failed:', error);
       
       return {
         success: false,

@@ -5,12 +5,33 @@ import config from '../../knexfile';
 const getConfig = (): Knex.Config => {
   const env = process.env.NODE_ENV || 'development';
   
+  console.log('🔧 Knex config loaded:', {
+    NODE_ENV: process.env.NODE_ENV,
+    environment: env,
+    SUPABASE_URL: process.env.SUPABASE_URL ? 'present' : 'not present',
+    processCwd: process.cwd(),
+    hasSupabaseConfig: !!config.supabase,
+    hasEnvConfig: !!config[env]
+  });
+  
   // For Supabase, we can use the supabase config or fall back to environment-based config
   if (process.env.SUPABASE_URL) {
-    return config.supabase;
+    console.log('📋 Using supabase config');
+    const supabaseConfig = config.supabase;
+    if (supabaseConfig.migrations) {
+      console.log('📁 Migration directory:', (supabaseConfig.migrations as any).directory);
+      console.log('📁 Migration extension:', (supabaseConfig.migrations as any).extension);
+    }
+    return supabaseConfig;
   }
   
-  return config[env] || config.development;
+  console.log('📋 Using environment config:', env);
+  const envConfig = config[env] || config.development;
+  if (envConfig.migrations) {
+    console.log('📁 Migration directory:', (envConfig.migrations as any).directory);
+    console.log('📁 Migration extension:', (envConfig.migrations as any).extension);
+  }
+  return envConfig;
 };
 
 // Create Knex instance

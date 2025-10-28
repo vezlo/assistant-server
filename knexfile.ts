@@ -1,5 +1,6 @@
 import type { Knex } from 'knex';
 import dotenv from 'dotenv';
+const path = require('path');
 
 // Load environment variables
 dotenv.config();
@@ -53,13 +54,13 @@ const config: { [key: string]: Knex.Config } = {
       max: 20
     },
     migrations: {
-      directory: './src/migrations',
+      directory: './dist/src/migrations',
       tableName: 'knex_migrations',
-      extension: 'ts'
+      extension: 'js'
     },
     seeds: {
-      directory: './src/seeds',
-      extension: 'ts'
+      directory: './dist/src/seeds',
+      extension: 'js'
     }
   },
 
@@ -79,13 +80,16 @@ const config: { [key: string]: Knex.Config } = {
       max: 10
     },
     migrations: {
-      directory: './src/migrations',
+      directory: process.env.NODE_ENV === 'production' 
+        ? path.join(process.cwd(), 'dist/src/migrations')
+        : './src/migrations',
       tableName: 'knex_migrations',
-      extension: 'ts'
+      extension: process.env.NODE_ENV === 'production' ? 'js' : 'ts',
+      loadExtensions: process.env.NODE_ENV === 'production' ? ['.js'] : ['.ts']
     },
     seeds: {
-      directory: './src/seeds',
-      extension: 'ts'
+      directory: process.env.NODE_ENV === 'production' ? './dist/src/seeds' : './src/seeds',
+      extension: process.env.NODE_ENV === 'production' ? 'js' : 'ts'
     }
   }
 };
