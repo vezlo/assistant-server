@@ -10,13 +10,15 @@ import { specs, swaggerUiOptions } from './config/swagger';
 import { config as globalConfig } from './config/global';
 import logger from './config/logger';
 import { errorHandler, notFoundHandler, asyncHandler } from './middleware/errorHandler';
-import { authenticateUser, authenticateApiKey } from './middleware/auth';
+import { authenticateUser, authenticateApiKey, authenticateUserOrApiKey } from './middleware/auth';
 import { ChatController } from './controllers/ChatController';
 import { KnowledgeController } from './controllers/KnowledgeController';
 import { AuthController } from './controllers/AuthController';
+import { ApiKeyController } from './controllers/ApiKeyController';
 import { ChatManager } from './services/ChatManager';
 import { KnowledgeBaseService } from './services/KnowledgeBaseService';
 import { AIService } from './services/AIService';
+import { ApiKeyService } from './services/ApiKeyService';
 import { UnifiedStorage } from './storage/UnifiedStorage';
 import { runMigrations, getMigrationStatus } from './config/knex';
 import { createClient } from '@supabase/supabase-js';
@@ -77,6 +79,7 @@ app.use('/docs', swaggerUi.serve, swaggerUi.setup(specs, swaggerUiOptions));
 let chatController: ChatController;
 let knowledgeController: KnowledgeController;
 let authController: AuthController;
+let apiKeyController: ApiKeyController;
 
 async function initializeServices() {
   try {
@@ -103,9 +106,13 @@ async function initializeServices() {
     const chatManager = new ChatManager({ aiService, storage });
 
     // Initialize controllers
-    chatController = new ChatController(chatManager, storage);
+    chatController = new ChatController(chatManager, storage, supabase);
     knowledgeController = new KnowledgeController(knowledgeBase, aiService);
     authController = new AuthController(supabase);
+    
+    // Initialize API key service and controller
+    const apiKeyService = new ApiKeyService(supabase);
+    apiKeyController = new ApiKeyController(apiKeyService);
 
     logger.info('All services initialized successfully');
   } catch (error) {
@@ -236,16 +243,79 @@ app.post('/api/auth/logout', authenticateUser(supabase), (req, res) => authContr
  */
 app.get('/api/auth/me', authenticateUser(supabase), (req, res) => authController.getMe(req, res));
 
+// API Key Management Routes
+/**
+ * @swagger
+ * /api/api-keys:
+ *   post:
+ *     summary: Generate or update API key
+ *     description: Generate or update API key for the authenticated user's company. Only admins can generate API keys.
+ *     tags: [API Keys]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: API key generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 uuid:
+ *                   type: string
+ *                 api_key:
+ *                   type: string
+ *                 message:
+ *                   type: string
+ *       403:
+ *         description: Only admins can generate API keys
+ *       401:
+ *         description: Not authenticated
+ *       500:
+ *         description: Internal server error
+ */
+app.post('/api/api-keys', authenticateUser(supabase), (req, res) => apiKeyController.generateApiKey(req, res));
+
+/**
+ * @swagger
+ * /api/api-keys/status:
+ *   get:
+ *     summary: Get API key status
+ *     description: Check if API key exists for the authenticated user's company
+ *     tags: [API Keys]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: API key status retrieved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 exists:
+ *                   type: boolean
+ *                 uuid:
+ *                   type: string
+ *                 message:
+ *                   type: string
+ *       401:
+ *         description: Not authenticated
+ *       500:
+ *         description: Internal server error
+ */
+app.get('/api/api-keys/status', authenticateUser(supabase), (req, res) => apiKeyController.getApiKeyStatus(req, res));
+
 // Chat API Routes
 /**
  * @swagger
  * /api/conversations:
  *   post:
  *     summary: Create a new conversation
- *     description: Create a new conversation for the authenticated user
+ *     description: Create a new conversation (Public API - No authentication required)
  *     tags: [Chat]
- *     security:
- *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -261,22 +331,18 @@ app.get('/api/auth/me', authenticateUser(supabase), (req, res) => authController
  *               $ref: '#/components/schemas/CreateConversationResponse'
  *       400:
  *         description: Invalid request
- *       401:
- *         description: Not authenticated
  *       500:
  *         description: Internal server error
  */
-app.post('/api/conversations', authenticateUser(supabase), (req, res) => chatController.createConversation(req, res));
+app.post('/api/conversations', (req, res) => chatController.createConversation(req, res));
 
 /**
  * @swagger
  * /api/conversations/{uuid}:
  *   get:
  *     summary: Get conversation by UUID
- *     description: Retrieve a specific conversation by its UUID
+ *     description: Retrieve a specific conversation by its UUID (Public API - No authentication required)
  *     tags: [Chat]
- *     security:
- *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: uuid
@@ -293,12 +359,10 @@ app.post('/api/conversations', authenticateUser(supabase), (req, res) => chatCon
  *               $ref: '#/components/schemas/GetConversationResponse'
  *       404:
  *         description: Conversation not found
- *       401:
- *         description: Not authenticated
  *       500:
  *         description: Internal server error
  */
-app.get('/api/conversations/:uuid', authenticateUser(supabase), (req, res) => chatController.getConversation(req, res));
+app.get('/api/conversations/:uuid', (req, res) => chatController.getConversation(req, res));
 
 /**
  * @swagger
@@ -333,10 +397,8 @@ app.delete('/api/conversations/:uuid', authenticateUser(supabase), (req, res) =>
  * /api/conversations/{uuid}/messages:
  *   post:
  *     summary: Send a message
- *     description: Send a user message to a conversation
+ *     description: Send a user message to a conversation (Public API - No authentication required)
  *     tags: [Chat]
- *     security:
- *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: uuid
@@ -359,24 +421,20 @@ app.delete('/api/conversations/:uuid', authenticateUser(supabase), (req, res) =>
  *               $ref: '#/components/schemas/SendMessageResponse'
  *       400:
  *         description: Invalid request
- *       401:
- *         description: Not authenticated
  *       404:
  *         description: Conversation not found
  *       500:
  *         description: Internal server error
  */
-app.post('/api/conversations/:uuid/messages', authenticateUser(supabase), (req, res) => chatController.createUserMessage(req, res));
+app.post('/api/conversations/:uuid/messages', (req, res) => chatController.createUserMessage(req, res));
 
 /**
  * @swagger
  * /api/messages/{uuid}/generate:
  *   post:
  *     summary: Generate AI response
- *     description: Generate an AI response for a specific message
+ *     description: Generate an AI response for a specific message (Public API - No authentication required)
  *     tags: [Chat]
- *     security:
- *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: uuid
@@ -393,14 +451,12 @@ app.post('/api/conversations/:uuid/messages', authenticateUser(supabase), (req, 
  *               $ref: '#/components/schemas/GenerateResponseResponse'
  *       400:
  *         description: Invalid request
- *       401:
- *         description: Not authenticated
  *       404:
  *         description: Message not found
  *       500:
  *         description: Internal server error
  */
-app.post('/api/messages/:uuid/generate', authenticateUser(supabase), (req, res) => chatController.generateResponse(req, res));
+app.post('/api/messages/:uuid/generate', (req, res) => chatController.generateResponse(req, res));
 
 /**
  * @swagger
@@ -462,10 +518,11 @@ app.post('/api/feedback', authenticateUser(supabase), (req, res) => chatControll
  * /api/knowledge/items:
  *   post:
  *     summary: Create knowledge item
- *     description: Create a new knowledge base item
+ *     description: Create a new knowledge base item. Can be authenticated with Bearer token or X-API-Key header.
  *     tags: [Knowledge Base]
  *     security:
  *       - bearerAuth: []
+ *       - apiKeyAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -486,7 +543,7 @@ app.post('/api/feedback', authenticateUser(supabase), (req, res) => chatControll
  *       500:
  *         description: Internal server error
  */
-app.post('/api/knowledge/items', authenticateUser(supabase), (req, res) => knowledgeController.createItem(req, res));
+app.post('/api/knowledge/items', authenticateUserOrApiKey(supabase), (req, res) => knowledgeController.createItem(req, res));
 
 /**
  * @swagger
@@ -529,10 +586,11 @@ app.get('/api/knowledge/items', authenticateUser(supabase), (req, res) => knowle
  * /api/knowledge/search:
  *   post:
  *     summary: Search knowledge base
- *     description: Search the knowledge base for relevant items
+ *     description: Search the knowledge base for relevant items. Can be authenticated with Bearer token or X-API-Key header.
  *     tags: [Search]
  *     security:
  *       - bearerAuth: []
+ *       - apiKeyAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -553,17 +611,18 @@ app.get('/api/knowledge/items', authenticateUser(supabase), (req, res) => knowle
  *       500:
  *         description: Internal server error
  */
-app.post('/api/knowledge/search', authenticateUser(supabase), (req, res) => knowledgeController.search(req, res));
+app.post('/api/knowledge/search', authenticateUserOrApiKey(supabase), (req, res) => knowledgeController.search(req, res));
 
 /**
  * @swagger
  * /api/search:
  *   post:
  *     summary: RAG search
- *     description: Perform Retrieval-Augmented Generation search
+ *     description: Perform Retrieval-Augmented Generation search. Can be authenticated with Bearer token or X-API-Key header.
  *     tags: [Search]
  *     security:
  *       - bearerAuth: []
+ *       - apiKeyAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -584,7 +643,7 @@ app.post('/api/knowledge/search', authenticateUser(supabase), (req, res) => know
  *       500:
  *         description: Internal server error
  */
-app.post('/api/search', authenticateUser(supabase), (req, res) => knowledgeController.ragSearch(req, res));
+app.post('/api/search', authenticateUserOrApiKey(supabase), (req, res) => knowledgeController.ragSearch(req, res));
 
 /**
  * @swagger
@@ -768,20 +827,7 @@ app.put('/api/knowledge/items/:uuid', authenticateUser(supabase), (req, res) => 
    *         description: Migration failed
    */
   app.get('/api/migrate', asyncHandler(async (req: any, res: any) => {
-    // Extract API key from query or header
     const apiKey = req.query.key || req.headers['x-migration-key'];
-
-    if (!apiKey) {
-      res.status(400).json({
-        success: false,
-        message: 'Migration API key is required',
-        error: 'MISSING_API_KEY',
-        details: {
-          usage: 'Add ?key=your-secret-key to the URL or x-migration-key header'
-        }
-      });
-      return;
-    }
 
     // Import MigrationService to use the proper validation
     const { MigrationService } = await import('./services/MigrationService');
@@ -869,20 +915,7 @@ app.put('/api/knowledge/items/:uuid', authenticateUser(supabase), (req, res) => 
    *         description: Failed to get migration status
    */
   app.get('/api/migrate/status', asyncHandler(async (req: any, res: any) => {
-    // Extract API key from query or header
     const apiKey = req.query.key || req.headers['x-migration-key'];
-
-    if (!apiKey) {
-      res.status(400).json({
-        success: false,
-        message: 'Migration API key is required',
-        error: 'MISSING_API_KEY',
-        details: {
-          usage: 'Add ?key=your-secret-key to the URL or x-migration-key header'
-        }
-      });
-      return;
-    }
 
     // Import MigrationService to use the proper validation
     const { MigrationService } = await import('./services/MigrationService');
@@ -892,6 +925,228 @@ app.put('/api/knowledge/items/:uuid', authenticateUser(supabase), (req, res) => 
       result.error === 'UNAUTHORIZED' ? 401 : 500;
 
     res.status(statusCode).json(result);
+  }));
+
+  /**
+   * @swagger
+   * /api/seed-default:
+   *   post:
+   *     summary: Seed default data
+   *     description: Creates default company and admin user for initial setup. Uses environment variables for configuration. Returns existing data if already created.
+   *     tags: [System]
+   *     parameters:
+   *       - in: query
+   *         name: key
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Migration secret key from MIGRATION_SECRET_KEY environment variable
+   *     security:
+   *       - migrationKey: []
+   *     responses:
+   *       200:
+   *         description: Default data seeded successfully or already exists
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 company_name:
+   *                   type: string
+   *                   example: "Vezlo"
+   *                 email:
+   *                   type: string
+   *                   example: "admin@vezlo.org"
+   *                 password:
+   *                   type: string
+   *                   example: "admin123"
+   *                 admin_name:
+   *                   type: string
+   *                   example: "Default Admin"
+   *       400:
+   *         description: Missing API key or invalid request
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 message:
+   *                   type: string
+   *                 error:
+   *                   type: string
+   *       401:
+   *         description: Unauthorized - Invalid migration key
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 message:
+   *                   type: string
+   *                   example: "Invalid or missing migration API key"
+   *                 error:
+   *                   type: string
+   *                   example: "UNAUTHORIZED"
+   *       500:
+   *         description: Failed to seed default data
+   */
+  app.post('/api/seed-default', asyncHandler(async (req: any, res: any) => {
+    // Extract API key from query or header
+    const apiKey = req.query.key || req.headers['x-migration-key'];
+
+    try {
+      // Validate API key
+      const { MigrationService } = await import('./services/MigrationService');
+      const keyValid = MigrationService.validateApiKey(apiKey);
+      
+      if (!keyValid) {
+        res.status(401).json({
+          success: false,
+          message: 'Invalid or missing migration API key',
+          error: 'UNAUTHORIZED'
+        });
+        return;
+      }
+
+      // Initialize Supabase
+      const supabase = createClient(
+        process.env.SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_KEY!
+      );
+
+      // Execute seed using SetupService
+      const { SetupService } = await import('./services/SetupService');
+      const setupService = new SetupService(supabase);
+      const response = await setupService.executeSeedDefault();
+
+      res.status(200).json(response);
+
+    } catch (error: any) {
+      logger.error('Seed default failed:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to seed default data',
+        error: error.message || 'SEED_DEFAULT_FAILED',
+        details: {
+          error: error.message
+        }
+      });
+    }
+  }));
+
+  /**
+   * @swagger
+   * /api/generate-key:
+   *   post:
+   *     summary: Generate API key for the default admin
+   *     description: Generates an API key for the default admin user's company
+   *     tags: [System]
+   *     security:
+   *       - migrationKey: []
+   *     parameters:
+   *       - in: query
+   *         name: key
+   *         description: Migration secret key
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: API key generated successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 message:
+   *                   type: string
+   *                   example: "API key generated successfully"
+   *                 api_key_details:
+   *                   type: object
+   *                   properties:
+   *                     company_name:
+   *                       type: string
+   *                       example: "Vezlo"
+   *                     user_name:
+   *                       type: string
+   *                       example: "Admin User"
+   *                     api_key:
+   *                       type: string
+   *                       example: "v.bzkO2h7Ga.c5MGe0zX-2CU-IeZPqreT6xSRCgq3Tw"
+   *       401:
+   *         description: Unauthorized
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 message:
+   *                   type: string
+   *                   example: "Invalid or missing migration API key"
+   *                 error:
+   *                   type: string
+   *                   example: "UNAUTHORIZED"
+   *       500:
+   *         description: Failed to generate API key
+   */
+  app.post('/api/generate-key', asyncHandler(async (req: any, res: any) => {
+    // Extract API key from query or header
+    const apiKey = req.query.key || req.headers['x-migration-key'];
+
+    try {
+      // Validate API key
+      const { MigrationService } = await import('./services/MigrationService');
+      const keyValid = MigrationService.validateApiKey(apiKey);
+      
+      if (!keyValid) {
+        res.status(401).json({
+          success: false,
+          message: 'Invalid or missing migration API key',
+          error: 'UNAUTHORIZED'
+        });
+        return;
+      }
+
+      // Initialize Supabase
+      const supabase = createClient(
+        process.env.SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_KEY!
+      );
+
+      // Execute generate-key using SetupService
+      const { SetupService } = await import('./services/SetupService');
+      const setupService = new SetupService(supabase);
+      const response = await setupService.executeGenerateKey();
+
+      res.status(200).json({
+        success: true,
+        message: 'API key generated successfully',
+        api_key_details: response
+      });
+
+    } catch (error: any) {
+      logger.error('Generate key failed:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to generate API key',
+        error: error.message || 'GENERATE_KEY_FAILED',
+        details: {
+          error: error.message
+        }
+      });
+    }
   }));
 
   // Error handling middleware (must be after all routes)

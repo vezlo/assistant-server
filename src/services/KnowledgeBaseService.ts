@@ -17,7 +17,7 @@ interface KnowledgeItem {
   file_size?: number;
   file_type?: string;
   metadata?: Record<string, any>;
-  created_by: number;
+  created_by?: number;
 }
 
 interface SearchOptions {
@@ -57,7 +57,7 @@ export class KnowledgeBaseService {
     file_size?: number;
     file_type?: string;
     metadata?: Record<string, any>;
-    created_by: number;
+    created_by?: number;
   }): Promise<string> {
     try {
       // Convert parent_id from UUID to internal ID if provided
@@ -74,6 +74,14 @@ export class KnowledgeBaseService {
         }
       }
 
+      // Get created_by - use provided value, or default to admin user ID (1) if not provided
+      let createdBy = item.created_by;
+      if (!createdBy) {
+        // For API key requests, use admin user (ID 1 by default)
+        // This maintains auditability while supporting service-to-service calls
+        createdBy = 1;
+      }
+
       const insertData: any = {
         parent_id: parentId,
         company_id: item.company_id || 1,
@@ -85,7 +93,7 @@ export class KnowledgeBaseService {
         file_size: item.file_size,
         file_type: item.file_type,
         metadata: item.metadata || {},
-        created_by: item.created_by,
+        created_by: createdBy,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };

@@ -149,13 +149,22 @@ npm run migrate:latest
 curl "http://localhost:3000/api/migrate?key=$MIGRATION_SECRET_KEY"
 ```
 
+#### 4. Create Default Admin & Generate API Key
+```bash
+# Create default admin user and company (if not exists)
+npm run seed-default
+
+# Generate API key for library integration
+npm run generate-key
+```
+
 Optional fallback (not recommended if using migrations):
 ```bash
 # Run raw SQL in Supabase Dashboard → SQL Editor
 cat database-schema.sql
 ```
 
-#### 4. Validate Setup
+#### 5. Validate Setup
 
 ```bash
 # Verify database connection and tables
@@ -293,20 +302,36 @@ CHUNK_OVERLAP=200
 The package provides these command-line tools:
 
 ### vezlo-setup
-**Interactive setup wizard** that guides you through the complete configuration process. This CLI tool provides the same functionality as the web-based setup wizard but runs in your terminal.
+Interactive setup wizard that guides you through configuration.
 
 ```bash
 vezlo-setup
 ```
 
+### vezlo-seed-default
+Creates default admin user and company.
+
+```bash
+vezlo-seed-default
+```
+
+### vezlo-generate-key
+Generates API key for the default admin's company. The API key is used by src-to-kb library.
+
+```bash
+vezlo-generate-key
+```
+
 ### vezlo-validate
 Validates database connection and verifies all tables exist.
+
 ```bash
 vezlo-validate
 ```
 
 ### vezlo-server
 Starts the API server.
+
 ```bash
 vezlo-server
 ```
@@ -666,4 +691,4 @@ This project is dual-licensed:
 
 ---
 
-**Status**: ✅ Production Ready | **Version**: 1.4.0 | **Node.js**: 20+ | **TypeScript**: 5+
+**Status**: ✅ Production Ready | **Version**: 2.0.0 | **Node.js**: 20+ | **TypeScript**: 5+

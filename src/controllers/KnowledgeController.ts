@@ -32,7 +32,11 @@ export class KnowledgeController {
         return;
       }
 
-      if (!req.profile) {
+      // Get company ID from either profile (JWT) or company (API key)
+      const companyId = req.profile?.companyId ? parseInt(req.profile.companyId) : 
+                       req.company?.id ? parseInt(req.company.id) : undefined;
+
+      if (!companyId) {
         res.status(401).json({ error: 'Authentication required' });
         return;
       }
@@ -55,9 +59,15 @@ export class KnowledgeController {
         return;
       }
 
+      // Get created_by from user (JWT auth) or admin user (API key auth)
+      // API key middleware already fetches the admin user, so we just use it
+      const createdBy = req.user?.id ? parseInt(req.user.id) : 
+                       req.company?.adminUserId ? req.company.adminUserId : 
+                       undefined;
+
       const itemId = await this.knowledgeBase.createItem({
         parent_id: parent_uuid,
-        company_id: req.profile?.companyId ? parseInt(req.profile.companyId) : undefined,
+        company_id: companyId,
         title,
         description,
         type,
@@ -66,7 +76,7 @@ export class KnowledgeController {
         file_size,
         file_type,
         metadata,
-        created_by: parseInt(req.user!.id)
+        created_by: createdBy
       });
 
       res.json({
@@ -236,7 +246,11 @@ export class KnowledgeController {
         return;
       }
 
-      if (!req.profile) {
+      // Get company ID from either profile (JWT) or company (API key)
+      const companyId = req.profile?.companyId ? parseInt(req.profile.companyId) : 
+                       req.company?.id ? parseInt(req.company.id) : undefined;
+
+      if (!companyId) {
         res.status(401).json({ error: 'Authentication required' });
         return;
       }
@@ -245,7 +259,7 @@ export class KnowledgeController {
         limit: parseInt(limit as string),
         threshold: parseFloat(threshold as string),
         type: type as 'semantic' | 'keyword' | 'hybrid',
-        company_id: req.profile?.companyId ? parseInt(req.profile.companyId) : undefined
+        company_id: companyId
       });
 
       res.json({
@@ -279,7 +293,11 @@ export class KnowledgeController {
         return;
       }
 
-      if (!req.profile) {
+      // Get company ID from either profile (JWT) or company (API key)
+      const companyId = req.profile?.companyId ? parseInt(req.profile.companyId) : 
+                       req.company?.id ? parseInt(req.company.id) : undefined;
+
+      if (!companyId) {
         res.status(401).json({ error: 'Authentication required' });
         return;
       }
@@ -294,7 +312,7 @@ export class KnowledgeController {
         limit: 3,
         threshold: 0.7,
         type: 'hybrid',
-        company_id: req.profile?.companyId ? parseInt(req.profile.companyId) : undefined
+        company_id: companyId
       });
 
       // Format search results for AI context

@@ -54,12 +54,13 @@ const config: { [key: string]: Knex.Config } = {
       max: 20
     },
     migrations: {
-      directory: './dist/src/migrations',
+      // Use absolute path based on __dirname (knexfile.js location in dist/)
+      directory: path.join(__dirname, 'src/migrations'),
       tableName: 'knex_migrations',
       extension: 'js'
     },
     seeds: {
-      directory: './dist/src/seeds',
+      directory: path.join(__dirname, 'src/seeds'),
       extension: 'js'
     }
   },
@@ -80,15 +81,19 @@ const config: { [key: string]: Knex.Config } = {
       max: 10
     },
     migrations: {
+      // In production (Vercel), knexfile.js is in dist/, so use absolute path
+      // In development, use relative path
       directory: process.env.NODE_ENV === 'production' 
-        ? path.join(process.cwd(), 'dist/src/migrations')
-        : './src/migrations',
+        ? path.join(__dirname, 'src/migrations')
+        : path.join(process.cwd(), 'src/migrations'),
       tableName: 'knex_migrations',
       extension: process.env.NODE_ENV === 'production' ? 'js' : 'ts',
       loadExtensions: process.env.NODE_ENV === 'production' ? ['.js'] : ['.ts']
     },
     seeds: {
-      directory: process.env.NODE_ENV === 'production' ? './dist/src/seeds' : './src/seeds',
+      directory: process.env.NODE_ENV === 'production' 
+        ? path.join(__dirname, 'src/seeds')
+        : path.join(process.cwd(), 'src/seeds'),
       extension: process.env.NODE_ENV === 'production' ? 'js' : 'ts'
     }
   }

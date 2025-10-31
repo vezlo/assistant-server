@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { SupabaseClient } from '@supabase/supabase-js';
 import { ChatManager } from '../services/ChatManager';
 import { UnifiedStorage } from '../storage/UnifiedStorage';
 import { AuthenticatedRequest } from '../middleware/auth';
@@ -7,10 +8,12 @@ import logger from '../config/logger';
 export class ChatController {
   private chatManager: ChatManager;
   private storage: UnifiedStorage;
+  private supabase: SupabaseClient;
 
-  constructor(chatManager: ChatManager, storage: UnifiedStorage) {
+  constructor(chatManager: ChatManager, storage: UnifiedStorage, supabase: SupabaseClient) {
     this.chatManager = chatManager;
     this.storage = storage;
+    this.supabase = supabase;
   }
 
   // Create a new conversation
@@ -18,9 +21,85 @@ export class ChatController {
     try {
       const { title } = req.body;
 
-      if (!req.profile) {
-        res.status(401).json({ error: 'Authentication required' });
-        return;
+      let userId: string;
+      let companyId: string;
+      let userUuid: string;
+      let companyUuid: string;
+
+      // If authenticated, use authenticated user's info
+      if (req.user && req.profile) {
+        userId = req.user.id.toString();
+        companyId = req.profile.companyId;
+        userUuid = req.user.uuid;
+        companyUuid = req.profile.companyUuid;
+      } else {
+        // For unauthenticated requests, get default company and admin user
+        try {
+          // Get default company (by domain 'default' or first company)
+          const { data: company, error: companyError } = await this.supabase
+            .from('vezlo_companies')
+            .select('id, uuid')
+            .eq('domain', 'default')
+            .single();
+
+          if (companyError || !company) {
+            // Try to get first company if no default company exists
+            const { data: firstCompany } = await this.supabase
+              .from('vezlo_companies')
+              .select('id, uuid')
+              .limit(1)
+              .single();
+
+            if (!firstCompany) {
+              res.status(400).json({
+                error: 'Cannot create conversation',
+                message: 'No company found. Please run the setup command to create a default company first.'
+              });
+              return;
+            }
+
+            companyId = firstCompany.id.toString();
+            companyUuid = firstCompany.uuid;
+          } else {
+            companyId = company.id.toString();
+            companyUuid = company.uuid;
+          }
+
+          // Get admin user for the company
+          const { data: profile, error: profileError } = await this.supabase
+            .from('vezlo_user_company_profiles')
+            .select(`
+              user_id,
+              vezlo_users!inner (
+                id,
+                uuid
+              )
+            `)
+            .eq('company_id', parseInt(companyId))
+            .eq('role', 'admin')
+            .eq('status', 'active')
+            .limit(1)
+            .single();
+
+          if (profileError || !profile || !profile.vezlo_users) {
+            res.status(400).json({
+              error: 'Cannot create conversation',
+              message: 'No admin user found for the company. Please run the setup command to create a default admin user first.'
+            });
+            return;
+          }
+
+          const user = Array.isArray(profile.vezlo_users) ? profile.vezlo_users[0] : profile.vezlo_users;
+          userId = user.id.toString();
+          userUuid = user.uuid;
+        } catch (error) {
+          logger.error('Error fetching default company/user:', error);
+          res.status(500).json({
+            error: 'Failed to create conversation',
+            message: 'Error fetching default company and user'
+          });
+          return;
+        }
       }
 
       // Generate a unique thread ID for the conversation
@@ -28,8 +107,8 @@ export class ChatController {
       
       const conversation = await this.storage.saveConversation({
         threadId,
-        userId: req.user!.id,
-        organizationId: req.profile?.companyId || undefined,
+        userId,
+        organizationId: companyId,
         title: title || 'New Conversation',
         messageCount: 0,
         createdAt: new Date(),
@@ -39,6 +118,8 @@ export class ChatController {
       res.json({
         uuid: conversation.id,
         title: conversation.title,
+        user_uuid: userUuid,
+        company_uuid: companyUuid,
         message_count: conversation.messageCount,
         created_at: conversation.createdAt
       });
@@ -124,16 +205,20 @@ export class ChatController {
       const aiService = (this.chatManager as any).aiService;
       let knowledgeResults = '';
       
+      // Get conversation to extract company_id for knowledge base search
+      const conversation = await this.storage.getConversation(conversationId);
+      const companyId = (req as AuthenticatedRequest).profile?.companyId || conversation?.organizationId;
+      
       if (aiService && aiService.knowledgeBaseService) {
         try {
           console.log('🔍 Searching knowledge base for:', userMessageContent);
-          console.log('🔑 Company ID:', req.profile?.companyId);
+          console.log('🔑 Company ID:', companyId);
           
           const searchResults = await aiService.knowledgeBaseService.search(userMessageContent, {
             limit: 3,
             threshold: 0.7,
             type: 'hybrid',
-            company_id: req.profile?.companyId ? parseInt(req.profile.companyId) : undefined
+            company_id: companyId ? parseInt(companyId) : undefined
           });
 
           console.log('📊 Found knowledge base results:', searchResults.length);
@@ -179,8 +264,7 @@ export class ChatController {
         createdAt: new Date()
       });
 
-      // Update conversation message count
-      const conversation = await this.storage.getConversation(conversationId);
+      // Update conversation message count (conversation already fetched above)
       if (conversation) {
         await this.storage.updateConversation(conversationId, {
           messageCount: conversation.messageCount + 1

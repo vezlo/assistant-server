@@ -1,13 +1,15 @@
 {
   "name": "@vezlo/assistant-server",
-  "version": "1.4.0",
+  "version": "2.0.0",
   "description": "Production-ready AI Assistant Server with vector search, conversation management, and real-time communication",
   "main": "dist/server.js",
   "types": "dist/server.d.ts",
   "bin": {
     "vezlo-server": "./bin/vezlo-server.js",
     "vezlo-setup": "./scripts/setup.js",
-    "vezlo-validate": "./scripts/validate-db.js"
+    "vezlo-validate": "./scripts/validate-db.js",
+    "vezlo-seed-default": "./scripts/seed-default.js",
+    "vezlo-generate-key": "./scripts/generate-key.js"
   },
   "files": [
     "dist/",
@@ -28,6 +30,7 @@
     "prepublishOnly": "npm run build",
     "setup": "node scripts/setup.js",
     "seed-default": "node scripts/seed-default.js",
+    "generate-key": "node scripts/generate-key.js",
     "validate": "node scripts/validate-db.js",
     "migrate:make": "knex migrate:make",
     "migrate:latest": "knex migrate:latest",

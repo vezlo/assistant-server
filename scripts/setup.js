@@ -105,8 +105,21 @@ async function main() {
 
     const defaultDataStatus = await setupDefaultData(config);
     migrationStatus.defaultData = defaultDataStatus;
+    
+    // Step 7: API Key Generation (only if default data setup succeeded)
+    if (defaultDataStatus === 'success') {
+      log('\n═══════════════════════════════════════════════════════════', 'cyan');
+      log('  STEP 7: API Key Generation', 'bright');
+      log('═══════════════════════════════════════════════════════════\n', 'cyan');
+      
+      const apiKeyStatus = await setupApiKey(config);
+      migrationStatus.apiKey = apiKeyStatus;
+    } else {
+      migrationStatus.apiKey = 'skipped';
+    }
   } else {
     migrationStatus.defaultData = 'skipped';
+    migrationStatus.apiKey = 'skipped';
   }
 
   // Final Instructions / Summary
@@ -121,6 +134,7 @@ async function main() {
   log(`  Database: ${validationStatus.database === 'success' ? colors.green + 'OK' : colors.red + (validationStatus.database === 'skipped' ? 'SKIPPED' : 'FAILED')}${colors.reset}`);
   log(`  Migrations: ${migrationStatus.migrations === 'success' ? colors.green + 'OK' : migrationStatus.migrations === 'skipped' ? colors.yellow + 'SKIPPED' : colors.red + 'FAILED'}${colors.reset}`);
   log(`  Default Data: ${migrationStatus.defaultData === 'success' ? colors.green + 'OK' : migrationStatus.defaultData === 'skipped' ? colors.yellow + 'SKIPPED' : colors.red + 'FAILED'}${colors.reset}`);
+  log(`  API Key: ${migrationStatus.apiKey === 'success' ? colors.green + 'OK' : migrationStatus.apiKey === 'skipped' ? colors.yellow + 'SKIPPED' : colors.red + 'FAILED'}${colors.reset}`);
 
   log('\nNext steps:');
   log('  1. Review your .env file');
@@ -128,12 +142,20 @@ async function main() {
     log('\n⚠️  IMPORTANT: Migrations were not run. You must run migrations first before seeding default data.', 'yellow');
     log('  2. Run database migrations: ' + colors.bright + 'npm run migrate:latest' + colors.reset);
     log('  3. Then run seed: ' + colors.bright + 'npm run seed-default' + colors.reset + ' (only after migrations complete)', 'yellow');
+    log('  4. Generate API key: ' + colors.bright + 'npm run generate-key' + colors.reset + ' (if not already done)');
+    log('  5. Start the server: ' + colors.bright + 'vezlo-server' + colors.reset);
+    log('  6. Visit: ' + colors.bright + 'http://localhost:3000/health' + colors.reset);
+    log('  7. API docs: ' + colors.bright + 'http://localhost:3000/docs' + colors.reset);
+    log('  8. Test API: ' + colors.bright + 'curl http://localhost:3000/health' + colors.reset + '\n');
+  } else if (migrationStatus.defaultData !== 'success') {
+    log('  2. Setup default data: ' + colors.bright + 'npm run seed-default' + colors.reset);
+    log('  3. Generate API key: ' + colors.bright + 'npm run generate-key' + colors.reset + ' (after default data is created)');
     log('  4. Start the server: ' + colors.bright + 'vezlo-server' + colors.reset);
     log('  5. Visit: ' + colors.bright + 'http://localhost:3000/health' + colors.reset);
     log('  6. API docs: ' + colors.bright + 'http://localhost:3000/docs' + colors.reset);
     log('  7. Test API: ' + colors.bright + 'curl http://localhost:3000/health' + colors.reset + '\n');
-  } else if (migrationStatus.defaultData !== 'success') {
-    log('  2. Setup default data: ' + colors.bright + 'npm run seed-default' + colors.reset);
+  } else if (migrationStatus.apiKey !== 'success') {
+    log('  2. Generate API key: ' + colors.bright + 'npm run generate-key' + colors.reset + ' (for library integration)');
     log('  3. Start the server: ' + colors.bright + 'vezlo-server' + colors.reset);
     log('  4. Visit: ' + colors.bright + 'http://localhost:3000/health' + colors.reset);
     log('  5. API docs: ' + colors.bright + 'http://localhost:3000/docs' + colors.reset);
@@ -519,7 +541,7 @@ async function setupDefaultData(config) {
     // Set environment variables for the setup
     process.env.SUPABASE_URL = config.SUPABASE_URL;
     process.env.SUPABASE_SERVICE_KEY = config.SUPABASE_SERVICE_KEY;
-    process.env.DEFAULT_ADMIN_EMAIL = config.DEFAULT_ADMIN_EMAIL || 'admin@vezlo.com';
+    process.env.DEFAULT_ADMIN_EMAIL = config.DEFAULT_ADMIN_EMAIL || 'admin@vezlo.org';
     process.env.DEFAULT_ADMIN_PASSWORD = config.DEFAULT_ADMIN_PASSWORD || 'admin123';
     process.env.ORGANIZATION_NAME = config.ORGANIZATION_NAME || 'Vezlo';
     process.env.JWT_SECRET = config.JWT_SECRET || require('crypto').randomBytes(32).toString('hex');
@@ -533,6 +555,46 @@ async function setupDefaultData(config) {
     log(`❌ Default data setup failed: ${err.message}`, 'red');
     log('\nYou can run default data setup manually later:', 'yellow');
     log('   npm run seed-default', 'cyan');
+    return 'failed';
+  }
+}
+
+async function setupApiKey(config) {
+  log('🔄 Generating API key for library integration...', 'yellow');
+
+  try {
+    // Import the API key generator dynamically
+    const { generateApiKey } = await import('./generate-key.js');
+    
+    // Set environment variables for the setup (already set in setupDefaultData)
+    
+    // Run the API key generator in quiet mode
+    const result = await generateApiKey({ quiet: true });
+    
+    if (result.success) {
+      // Show API key details
+      log('✅ API key generated successfully!', 'green');
+      log('\n📋 API Key Details:', 'bright');
+      log(`   Company: ${result.company}`, 'reset');
+      log(`   User: ${result.user.name}`, 'reset');
+      log(`   API Key: ${result.apiKey}`, 'bright');
+      log('\n⚠️  IMPORTANT: Save this key securely. It will not be shown again.', 'yellow');
+      
+      // Show usage example
+      log('\n🔧 Usage Example:', 'bright');
+      log(`   curl -X POST http://localhost:3000/api/knowledge/items \\
+     -H "X-API-Key: ${result.apiKey}" \\
+     -H "Content-Type: application/json" \\
+     -d '{"title": "Example", "type": "document", "content": "Example content"}'`, 'cyan');
+      
+      return 'success';
+    } else {
+      throw new Error(result.error);
+    }
+  } catch (err) {
+    log(`❌ API key generation failed: ${err.message}`, 'red');
+    log('\nYou can generate an API key manually later:', 'yellow');
+    log('   npm run generate-key', 'cyan');
     return 'failed';
   }
 }

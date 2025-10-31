@@ -28,7 +28,7 @@ export class MigrationService {
   /**
    * Validates API key against environment variable
    */
-  private static validateApiKey(apiKey: string): boolean {
+  static validateApiKey(apiKey: string): boolean {
     try {
       const expectedKey = process.env.MIGRATION_SECRET_KEY;
       

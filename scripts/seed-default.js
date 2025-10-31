@@ -35,44 +35,27 @@ async function runDefaultSetup() {
       return;
     }
 
-    // Get setup parameters
-    const adminEmail = process.env.DEFAULT_ADMIN_EMAIL || 'admin@vezlo.com';
-    const adminPassword = process.env.DEFAULT_ADMIN_PASSWORD || 'admin123';
-    const companyName = process.env.ORGANIZATION_NAME || 'Vezlo';
+    // Get setup parameters from service (already required at top)
+    const credentials = SetupService.getDefaultCredentials();
 
     console.log('📋 Setup Configuration:');
-    console.log(`   Company Name: ${companyName}`);
-    console.log(`   Admin Email: ${adminEmail}`);
-    console.log(`   Admin Password: ${adminPassword}`);
+    console.log(`   Company Name: ${credentials.companyName}`);
+    console.log(`   Admin Email: ${credentials.adminEmail}`);
+    console.log(`   Admin Password: ${credentials.adminPassword}`);
     console.log('');
 
     // Create default data
-    const result = await setupService.createDefaultData({
-      adminEmail,
-      adminPassword,
-      companyName
-    });
+    const result = await setupService.createDefaultData(credentials);
 
     // Display success summary
     console.log('\n🎉 Default Data Setup Completed!');
     console.log('=====================================');
-    console.log(`🏢 Company: ${result.company.name}`);
-    console.log(`   Domain: ${result.company.domain}`);
-    console.log(`   UUID: ${result.company.id}`);
+    console.log('📋 Default Admin Credentials:');
     console.log('');
-    console.log(`👤 Admin User: ${result.user.name}`);
-    console.log(`   Email: ${result.user.email}`);
-    console.log(`   Password: ${adminPassword}`);
-    console.log(`   UUID: ${result.user.id}`);
-    console.log('');
-    console.log(`🔑 Profile: ${result.profile.id}`);
-    console.log(`   Role: ${result.profile.role}`);
-    console.log('');
-    console.log('📝 Next Steps:');
-    console.log('   1. Start your server: npm run dev');
-    console.log('   2. Login with the admin credentials above');
-    console.log('   3. Create additional users and companies as needed');
-    console.log('   4. Configure your knowledge base');
+    console.log(`   Company Name: ${result.company.name}`);
+    console.log(`   Admin Email: ${result.user.email}`);
+    console.log(`   Admin Password: ${credentials.adminPassword}`);
+    console.log(`   Admin Name: ${result.user.name}`);
     console.log('');
 
   } catch (error) {

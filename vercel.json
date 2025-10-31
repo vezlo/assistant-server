@@ -1,7 +1,6 @@
 {
   "buildCommand": "npm run vercel-build",
   "outputDirectory": ".",
-  "installCommand": "npm install",
   "rewrites": [
     {
       "source": "/(.*)",
@@ -12,11 +11,6 @@
     "api/**/*.ts": {
       "memory": 1024,
       "maxDuration": 60
-    }
-  },
-  "build": {
-    "env": {
-      "ENABLE_TYPESCRIPT_PLUGIN": "false"
     }
   },
   "env": {

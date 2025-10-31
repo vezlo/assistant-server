@@ -68,6 +68,8 @@ export const ConversationSchemas = {
     properties: {
       uuid: { type: 'string', description: 'Conversation UUID' },
       title: { type: 'string', description: 'Conversation title' },
+      user_uuid: { type: 'string', description: 'User UUID' },
+      company_uuid: { type: 'string', description: 'Company UUID' },
       message_count: { type: 'integer', description: 'Number of messages' },
       created_at: { type: 'string', format: 'date-time' }
     }

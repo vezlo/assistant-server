@@ -10,9 +10,40 @@ export class SetupService {
   }
 
   /**
-   * Create default company and admin user for initial setup
+   * Get default admin credentials from environment variables
+   */
+  static getDefaultCredentials() {
+    return {
+      adminEmail: process.env.DEFAULT_ADMIN_EMAIL || 'admin@vezlo.org',
+      adminPassword: process.env.DEFAULT_ADMIN_PASSWORD || 'admin123',
+      companyName: process.env.ORGANIZATION_NAME || 'Vezlo'
+    };
+  }
+
+  /**
+   * Create default company and admin user for initial setup (CLI compatibility)
+   * @deprecated Use getOrCreateDefaultData instead
    */
   async createDefaultData(options: {
+    adminEmail: string;
+    adminPassword: string;
+    companyName: string;
+  }) {
+    const result = await this.getOrCreateDefaultData(options);
+    
+    // Throw error if already exists (maintains CLI behavior)
+    if (result.alreadyExists) {
+      throw new Error('Default company and admin user already exist');
+    }
+    
+    return result;
+  }
+
+  /**
+   * Get or create default company and admin user for initial setup
+   * Returns existing data if already created
+   */
+  async getOrCreateDefaultData(options: {
     adminEmail: string;
     adminPassword: string;
     companyName: string;
@@ -20,17 +51,47 @@ export class SetupService {
     const { adminEmail, adminPassword, companyName } = options;
 
     try {
-      logger.info('Creating default company and admin user...');
+      logger.info('Checking for existing default company and admin user...');
 
       // Check if default company already exists
       const { data: existingCompany } = await this.supabase
         .from('vezlo_companies')
-        .select('id')
+        .select('*')
         .eq('domain', 'default')
         .single();
 
       if (existingCompany) {
-        throw new Error('Default company already exists');
+        // Get the admin user and profile
+        const { data: profile } = await this.supabase
+          .from('vezlo_user_company_profiles')
+          .select('*, vezlo_users(*)')
+          .eq('company_id', existingCompany.id)
+          .eq('role', 'admin')
+          .single();
+
+        if (profile && profile.vezlo_users) {
+          const user = profile.vezlo_users;
+          logger.info('Default data already exists, returning existing data');
+          
+          return {
+            success: true,
+            alreadyExists: true,
+            company: {
+              id: existingCompany.uuid,
+              name: existingCompany.name,
+              domain: existingCompany.domain
+            },
+            user: {
+              id: user.uuid,
+              email: user.email,
+              name: user.name
+            },
+            profile: {
+              id: profile.uuid,
+              role: profile.role
+            }
+          };
+        }
       }
 
       // Check if admin user already exists
@@ -43,6 +104,8 @@ export class SetupService {
       if (existingUser) {
         throw new Error(`User with email ${adminEmail} already exists`);
       }
+
+      logger.info('Creating default company and admin user...');
 
       // Create default company
       const { data: company, error: companyError } = await this.supabase
@@ -100,6 +163,7 @@ export class SetupService {
 
       const result = {
         success: true,
+        alreadyExists: false,
         company: {
           id: company.uuid,
           name: company.name,
@@ -116,7 +180,7 @@ export class SetupService {
         }
       };
 
-      logger.info('🎉 Default setup completed successfully!');
+      logger.info('Default setup completed successfully!');
       return result;
 
     } catch (error) {
@@ -192,5 +256,103 @@ export class SetupService {
         message: 'Failed to check setup status'
       };
     }
+  }
+
+  /**
+   * Execute seed-default API - returns simplified response
+   */
+  async executeSeedDefault() {
+    const credentials = SetupService.getDefaultCredentials();
+    
+    // Wait for schema cache to refresh
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    const result = await this.getOrCreateDefaultData(credentials);
+
+    // Prepare simplified response
+    const response: any = {
+      company_name: result.company.name,
+      email: result.user.email,
+      password: credentials.adminPassword,
+      admin_name: result.user.name
+    };
+
+    return response;
+  }
+
+  /**
+   * Execute generate-key API - returns API key for default admin
+   */
+  async executeGenerateKey() {
+    const credentials = SetupService.getDefaultCredentials();
+    
+    // Wait for schema cache to refresh
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Find the admin user
+    const { data: user, error: userError } = await this.supabase
+      .from('vezlo_users')
+      .select('id, uuid, name')
+      .eq('email', credentials.adminEmail)
+      .single();
+    
+    if (userError || !user) {
+      throw new Error(`Admin user not found (${credentials.adminEmail}). Run seed-default first.`);
+    }
+    
+    // Find the admin's company profile
+    const { data: profile, error: profileError } = await this.supabase
+      .from('vezlo_user_company_profiles')
+      .select(`
+        id,
+        role,
+        company_id,
+        companies:company_id(
+          id,
+          uuid,
+          name,
+          domain
+        )
+      `)
+      .eq('user_id', user.id)
+      .eq('role', 'admin')
+      .single();
+    
+    if (profileError || !profile) {
+      throw new Error(`Admin profile not found. Run seed-default first.`);
+    }
+    
+    // Import ApiKeyService
+    const { ApiKeyService } = await import('./ApiKeyService');
+    
+    // Generate the API key
+    const apiKeyService = new ApiKeyService(this.supabase);
+    const { uuid, apiKey } = await apiKeyService.generateApiKey(parseInt(profile.company_id));
+    
+    // Debug profile structure
+    console.log('Profile structure:', JSON.stringify(profile, null, 2));
+
+    // Get company name (handle type issues with fallbacks)
+    let companyName = 'Unknown Company';
+    try {
+      // Access as Record to avoid TypeScript errors since structure can vary
+      const companies = profile.companies as Record<string, any>;
+      if (companies && typeof companies === 'object') {
+        if (companies.name) {
+          companyName = companies.name;
+        }
+      }
+    } catch (e) {
+      console.log('Error getting company name:', e);
+    }
+    
+    // Prepare response
+    const response = {
+      company_name: companyName,
+      user_name: user.name,
+      api_key: apiKey
+    };
+    
+    return response;
   }
 }

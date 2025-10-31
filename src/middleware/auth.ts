@@ -22,6 +22,13 @@ export interface AuthenticatedRequest extends Request {
     role: string;
     status: string;
   };
+  company?: {
+    id: string;
+    uuid: string;
+    name: string;
+    domain: string;
+    adminUserId: number | null;
+  };
 }
 
 // JWT payload interface
@@ -187,10 +194,13 @@ export const authenticateApiKey = (supabase: SupabaseClient) => {
         throw new UnauthorizedError('API key required');
       }
 
-      // Hash the provided API key
-      const keyHash = await PasswordUtils.hash(apiKey);
-
-      // Find the API key
+      // We'll use a different approach - store API keys as SHA-256 hashes instead of bcrypt
+      // This is appropriate for API keys since they are random and we need exact comparison
+      // Convert the API key to a SHA-256 hash
+      const crypto = require('crypto');
+      const hashedKey = crypto.createHash('sha256').update(apiKey).digest('hex');
+      
+      // Find the API key by its hash
       const { data: apiKeyData, error: apiKeyError } = await supabase
         .from('vezlo_api_keys')
         .select(`
@@ -202,10 +212,11 @@ export const authenticateApiKey = (supabase: SupabaseClient) => {
             domain
           )
         `)
-        .eq('key_hash', keyHash)
+        .eq('key_hash', hashedKey)
         .single();
-
+      
       if (apiKeyError || !apiKeyData) {
+        console.log(`API key validation failed. API key hash not found: ${hashedKey.substring(0, 10)}...`);
         throw new UnauthorizedError('Invalid API key');
       }
 
@@ -214,12 +225,25 @@ export const authenticateApiKey = (supabase: SupabaseClient) => {
         throw new UnauthorizedError('API key has expired');
       }
 
+      // Get admin user for the company (for created_by attribution)
+      const companyId = apiKeyData.companies.id;
+      const { data: adminProfile } = await supabase
+        .from('vezlo_user_company_profiles')
+        .select('user_id')
+        .eq('company_id', companyId)
+        .eq('role', 'admin')
+        .eq('status', 'active')
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .single();
+
       // Attach company data to request
       (req as any).company = {
         id: apiKeyData.companies.id.toString(),
         uuid: apiKeyData.companies.uuid,
         name: apiKeyData.companies.name,
-        domain: apiKeyData.companies.domain
+        domain: apiKeyData.companies.domain,
+        adminUserId: adminProfile?.user_id || null
       };
 
       next();
@@ -241,5 +265,29 @@ export const requireRole = (allowedRoles: string[]) => {
     }
 
     next();
+  };
+};
+
+// Combined authentication middleware that accepts either JWT or API key
+export const authenticateUserOrApiKey = (supabase: SupabaseClient) => {
+  return async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      // Try JWT authentication first
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        return authenticateUser(supabase)(req, res, next);
+      }
+
+      // If no JWT, try API key authentication
+      const apiKey = req.headers['x-api-key'] as string;
+      if (apiKey) {
+        return authenticateApiKey(supabase)(req, res, next);
+      }
+
+      // Neither found
+      throw new UnauthorizedError('No authentication provided. Use either Bearer token or X-API-Key header');
+    } catch (error) {
+      next(error);
+    }
   };
 };
