@@ -8,7 +8,7 @@
 
 ### Migration Required
 - **Database Schema**: New authentication and multi-tenancy tables
-- **API Changes**: JWT authentication now required for all endpoints
+- **Auth Model**: Endpoints now use a mix of auth modes — some support JWT or API key, and select public endpoints remain for the chat widget
 - **Data Structure**: Foreign key relationships updated for multi-tenancy
 
 ### Quick Migration Steps
@@ -92,6 +92,8 @@ The wizard will guide you through:
 3. **Validation (non‑blocking)** - Tests Supabase API and DB connectivity
 4. **Migrations** - Runs Knex migrations if DB validation passes; otherwise shows how to run later
 5. **Environment** - Generates `.env` (does not overwrite if it already exists)
+6. **Default Data Seeding** - Creates default admin user and company
+7. **API Key Generation** - Generates API key for the default company
 
 After setup completes, start the server:
 
@@ -174,7 +176,7 @@ vezlo-validate
 npm run validate
 ```
 
-#### 5. Start Server
+#### 6. Start Server
 
 ```bash
 # If installed globally
@@ -272,6 +274,11 @@ AI_MAX_TOKENS=1000
 
 # REQUIRED - Database Migration Security
 MIGRATION_SECRET_KEY=your-secure-migration-key-here
+
+# REQUIRED - Authentication
+JWT_SECRET=your-super-secret-jwt-key-here-change-this-in-production
+DEFAULT_ADMIN_EMAIL=admin@vezlo.org
+DEFAULT_ADMIN_PASSWORD=admin123
 
 # OPTIONAL - Server Configuration
 PORT=3000
@@ -605,6 +612,8 @@ Ensure all required environment variables are set:
 - `SUPABASE_DB_HOST`, `SUPABASE_DB_PASSWORD` (required for migrations)
 - `OPENAI_API_KEY` (required)
 - `MIGRATION_SECRET_KEY` (required for migration endpoints)
+- `JWT_SECRET` (required for authentication)
+- `DEFAULT_ADMIN_EMAIL` and `DEFAULT_ADMIN_PASSWORD` (required for initial setup)
 - `NODE_ENV=production`
 - `CORS_ORIGINS` (set to your domain)
 - `BASE_URL` (optional, for custom Swagger server URL)
