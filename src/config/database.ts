@@ -11,7 +11,7 @@ export function initializeSupabase(): SupabaseClient {
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseKey) {
-    throw new Error('SUPABASE_URL and SUPABASE_SERVICE_KEY environment variables are required');
+    throw new Error('SUPABASE_URL and SUPABASE_SERVICE_KEY (or SUPABASE_ANON_KEY as fallback) environment variables are required');
   }
 
   supabaseClient = createClient(supabaseUrl, supabaseKey, {
