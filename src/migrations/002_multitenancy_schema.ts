@@ -59,14 +59,12 @@ export async function up(knex: Knex): Promise<void> {
 
   // Update conversations table
   await knex.schema.alterTable('vezlo_conversations', (table) => {
-    table.bigInteger('creator_user_id').references('id').inTable('vezlo_users').onDelete('CASCADE');
     // company_id already exists from Migration 001, just add foreign key constraint
     table.foreign('company_id').references('id').inTable('vezlo_companies').onDelete('CASCADE');
   });
 
   // Update knowledge_items table
   await knex.schema.alterTable('vezlo_knowledge_items', (table) => {
-    table.bigInteger('created_by_user_id').references('id').inTable('vezlo_users').onDelete('CASCADE');
     // company_id already exists from Migration 001, just add foreign key constraint
     table.foreign('company_id').references('id').inTable('vezlo_companies').onDelete('CASCADE');
   });
@@ -106,9 +104,7 @@ export async function up(knex: Knex): Promise<void> {
   await knex.schema.raw('CREATE INDEX IF NOT EXISTS idx_vezlo_api_keys_expires_at ON vezlo_api_keys(expires_at)');
 
   // Updated foreign key indexes
-  await knex.schema.raw('CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_creator_user_id ON vezlo_conversations(creator_user_id)');
   await knex.schema.raw('CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_company_id ON vezlo_conversations(company_id)');
-  await knex.schema.raw('CREATE INDEX IF NOT EXISTS idx_vezlo_knowledge_created_by_user_id ON vezlo_knowledge_items(created_by_user_id)');
   await knex.schema.raw('CREATE INDEX IF NOT EXISTS idx_vezlo_knowledge_company_id ON vezlo_knowledge_items(company_id)');
   await knex.schema.raw('CREATE INDEX IF NOT EXISTS idx_vezlo_feedback_user_id ON vezlo_message_feedback(user_id)');
   await knex.schema.raw('CREATE INDEX IF NOT EXISTS idx_vezlo_feedback_company_id ON vezlo_message_feedback(company_id)');
@@ -117,12 +113,10 @@ export async function up(knex: Knex): Promise<void> {
 export async function down(knex: Knex): Promise<void> {
   // Drop foreign key constraints first
   await knex.schema.alterTable('vezlo_conversations', (table) => {
-    table.dropColumn('creator_user_id');
     table.dropForeign('company_id');
   });
 
   await knex.schema.alterTable('vezlo_knowledge_items', (table) => {
-    table.dropColumn('created_by_user_id');
     table.dropForeign('company_id');
   });
 

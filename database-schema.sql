@@ -94,9 +94,8 @@ CREATE TABLE IF NOT EXISTS vezlo_api_keys (
 CREATE TABLE IF NOT EXISTS vezlo_conversations (
   id BIGSERIAL PRIMARY KEY,
   uuid UUID DEFAULT gen_random_uuid() UNIQUE NOT NULL,
-  company_id BIGINT REFERENCES vezlo_companies(id) ON DELETE CASCADE,
+  company_id BIGINT, -- Foreign key added in migration 002
   creator_id BIGINT NOT NULL,
-  creator_user_id BIGINT REFERENCES vezlo_users(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   message_count INTEGER DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
@@ -121,8 +120,8 @@ CREATE TABLE IF NOT EXISTS vezlo_message_feedback (
   id BIGSERIAL PRIMARY KEY,
   uuid UUID DEFAULT gen_random_uuid() UNIQUE NOT NULL,
   message_id BIGINT NOT NULL REFERENCES vezlo_messages(id) ON DELETE CASCADE,
-  user_id BIGINT NOT NULL REFERENCES vezlo_users(id) ON DELETE CASCADE,
-  company_id BIGINT REFERENCES vezlo_companies(id) ON DELETE CASCADE,
+  user_id BIGINT NOT NULL, -- Foreign key added in migration 002
+  company_id BIGINT, -- Added in migration 002 with foreign key
   rating TEXT NOT NULL, -- positive, negative
   category TEXT,
   comment TEXT,
@@ -138,7 +137,7 @@ CREATE TABLE IF NOT EXISTS vezlo_knowledge_items (
   id BIGSERIAL PRIMARY KEY,
   uuid UUID DEFAULT gen_random_uuid() UNIQUE NOT NULL,
   parent_id BIGINT REFERENCES vezlo_knowledge_items(id), -- Hierarchical structure
-  company_id BIGINT REFERENCES vezlo_companies(id) ON DELETE CASCADE,
+  company_id BIGINT, -- Foreign key added in migration 002
   title TEXT NOT NULL,
   description TEXT,
   type TEXT NOT NULL, -- folder, document, file, url, url_directory
@@ -150,10 +149,51 @@ CREATE TABLE IF NOT EXISTS vezlo_knowledge_items (
   embedding vector(1536), -- OpenAI embeddings for search
   processed_at TIMESTAMPTZ, -- When embedding was generated
   created_by BIGINT NOT NULL,
-  created_by_user_id BIGINT REFERENCES vezlo_users(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
+
+-- ============================================================================
+-- ADD FOREIGN KEY CONSTRAINTS (Matching Migration 002)
+-- These constraints use explicit names matching Knex migration naming convention
+-- for proper rollback compatibility: {table}_{column}_foreign
+-- ============================================================================
+
+-- Add foreign keys to vezlo_conversations (added in migration 002)
+DO $$ 
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'vezlo_conversations_company_id_foreign') THEN
+    ALTER TABLE vezlo_conversations 
+      ADD CONSTRAINT vezlo_conversations_company_id_foreign 
+      FOREIGN KEY (company_id) REFERENCES vezlo_companies(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+
+-- Add foreign keys to vezlo_knowledge_items (added in migration 002)
+DO $$ 
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'vezlo_knowledge_items_company_id_foreign') THEN
+    ALTER TABLE vezlo_knowledge_items 
+      ADD CONSTRAINT vezlo_knowledge_items_company_id_foreign 
+      FOREIGN KEY (company_id) REFERENCES vezlo_companies(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+
+-- Add foreign keys to vezlo_message_feedback (added in migration 002)
+DO $$ 
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'vezlo_message_feedback_user_id_foreign') THEN
+    ALTER TABLE vezlo_message_feedback 
+      ADD CONSTRAINT vezlo_message_feedback_user_id_foreign 
+      FOREIGN KEY (user_id) REFERENCES vezlo_users(id) ON DELETE CASCADE;
+  END IF;
+  
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'vezlo_message_feedback_company_id_foreign') THEN
+    ALTER TABLE vezlo_message_feedback 
+      ADD CONSTRAINT vezlo_message_feedback_company_id_foreign 
+      FOREIGN KEY (company_id) REFERENCES vezlo_companies(id) ON DELETE CASCADE;
+  END IF;
+END $$;
 
 -- ============================================================================
 -- INDEXES FOR PERFORMANCE
@@ -186,7 +226,6 @@ CREATE INDEX IF NOT EXISTS idx_vezlo_api_keys_expires_at ON vezlo_api_keys(expir
 CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_uuid ON vezlo_conversations(uuid);
 CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_company_id ON vezlo_conversations(company_id);
 CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_creator_id ON vezlo_conversations(creator_id);
-CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_creator_user_id ON vezlo_conversations(creator_user_id);
 CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_deleted ON vezlo_conversations(deleted_at) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_updated_at ON vezlo_conversations(updated_at DESC);
 
@@ -211,7 +250,6 @@ CREATE INDEX IF NOT EXISTS idx_vezlo_knowledge_company_id ON vezlo_knowledge_ite
 CREATE INDEX IF NOT EXISTS idx_vezlo_knowledge_parent_id ON vezlo_knowledge_items(parent_id);
 CREATE INDEX IF NOT EXISTS idx_vezlo_knowledge_type ON vezlo_knowledge_items(type);
 CREATE INDEX IF NOT EXISTS idx_vezlo_knowledge_created_by ON vezlo_knowledge_items(created_by);
-CREATE INDEX IF NOT EXISTS idx_vezlo_knowledge_created_by_user_id ON vezlo_knowledge_items(created_by_user_id);
 CREATE INDEX IF NOT EXISTS idx_vezlo_knowledge_created_at ON vezlo_knowledge_items(created_at DESC);
 
 -- Full-text search index for knowledge items

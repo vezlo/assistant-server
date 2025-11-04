@@ -23,10 +23,11 @@ import { UnifiedStorage } from './storage/UnifiedStorage';
 import { runMigrations, getMigrationStatus } from './config/knex';
 import { createClient } from '@supabase/supabase-js';
 
-// Initialize Supabase client
+// Initialize Supabase client - use SERVICE_KEY for server-side operations
+// Service key bypasses RLS and is required for API key authentication
 const supabase = createClient(
   process.env.SUPABASE_URL!,
-  process.env.SUPABASE_ANON_KEY!
+  process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY!
 );
 
 // Initialize Express app

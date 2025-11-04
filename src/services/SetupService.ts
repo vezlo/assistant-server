@@ -327,7 +327,9 @@ export class SetupService {
     
     // Generate the API key
     const apiKeyService = new ApiKeyService(this.supabase);
-    const { uuid, apiKey } = await apiKeyService.generateApiKey(parseInt(profile.company_id));
+    // Use the joined company ID (same as generate-key.js script)
+    const companyId = (profile.companies as any)?.id || profile.company_id;
+    const { uuid, apiKey } = await apiKeyService.generateApiKey(typeof companyId === 'number' ? companyId : parseInt(String(companyId)));
     
     // Debug profile structure
     console.log('Profile structure:', JSON.stringify(profile, null, 2));

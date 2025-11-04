@@ -51,6 +51,7 @@ async function generateApiKey(options = { quiet: false }) {
       .select(`
         id,
         role,
+        company_id,
         companies:company_id(
           id,
           uuid,
@@ -68,9 +69,13 @@ async function generateApiKey(options = { quiet: false }) {
     
     if (!options.quiet) console.log(`✅ Found company: ${profile.companies.name} (${profile.companies.uuid})`);
     
-    // Generate the API key
+    // Generate the API key - use joined company ID with fallback to direct company_id
     const apiKeyService = new ApiKeyService(supabase);
-    const { uuid, apiKey } = await apiKeyService.generateApiKey(profile.companies.id);
+    const companyId = profile.companies?.id || profile.company_id;
+    if (!companyId) {
+      throw new Error('Could not determine company ID from profile');
+    }
+    const { uuid, apiKey } = await apiKeyService.generateApiKey(companyId);
     
     if (!options.quiet) {
       // Display success summary

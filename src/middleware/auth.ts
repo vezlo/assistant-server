@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { UnauthorizedError, ForbiddenError } from './errorHandler';
+import logger from '../config/logger';
 
 // Extend Request interface to include user information
 export interface AuthenticatedRequest extends Request {
@@ -189,7 +190,7 @@ export const authenticateUser = (supabase: SupabaseClient) => {
 export const authenticateApiKey = (supabase: SupabaseClient) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const apiKey = req.headers['x-api-key'] as string;
+      const apiKey = (req.headers['x-api-key'] as string)?.trim();
       if (!apiKey) {
         throw new UnauthorizedError('API key required');
       }
@@ -216,7 +217,14 @@ export const authenticateApiKey = (supabase: SupabaseClient) => {
         .single();
       
       if (apiKeyError || !apiKeyData) {
-        console.log(`API key validation failed. API key hash not found: ${hashedKey.substring(0, 10)}...`);
+        logger.warn(`API key validation failed. Key length: ${apiKey.length}, Hash: ${hashedKey.substring(0, 20)}...`);
+        if (apiKeyError) {
+          logger.warn(`Supabase error code: ${apiKeyError.code}, message: ${apiKeyError.message}`);
+          // Check if it's a permission error
+          if (apiKeyError.code === 'PGRST301' || apiKeyError.message?.includes('permission') || apiKeyError.message?.includes('RLS')) {
+            logger.error('API key lookup failed due to permissions. Ensure SUPABASE_SERVICE_KEY is used instead of SUPABASE_ANON_KEY');
+          }
+        }
         throw new UnauthorizedError('Invalid API key');
       }
 
@@ -279,7 +287,7 @@ export const authenticateUserOrApiKey = (supabase: SupabaseClient) => {
       }
 
       // If no JWT, try API key authentication
-      const apiKey = req.headers['x-api-key'] as string;
+      const apiKey = (req.headers['x-api-key'] as string)?.trim();
       if (apiKey) {
         return authenticateApiKey(supabase)(req, res, next);
       }
