@@ -327,13 +327,13 @@ export class KnowledgeBaseService {
         // Hybrid search - combine both approaches
         const semanticResults = await this.semanticSearch(query, Math.ceil(limit / 2), threshold, options.company_id);
         const keywordResults = await this.keywordSearch(query, Math.ceil(limit / 2), options.company_id);
-        
+
         // Merge and deduplicate results
         const combined = [...semanticResults, ...keywordResults];
-        const unique = combined.filter((item, index, self) => 
+        const unique = combined.filter((item, index, self) =>
           index === self.findIndex(t => t.id === item.id)
         );
-        
+
         return unique.slice(0, limit);
       }
 
@@ -345,100 +345,29 @@ export class KnowledgeBaseService {
   private async semanticSearch(query: string, limit: number, threshold: number, companyId?: number): Promise<SearchResult[]> {
     try {
       const queryEmbedding = await this.generateEmbedding(query);
-      if (!queryEmbedding) return [];
 
-      // Get all items with embeddings from database
-      let dbQuery = this.supabase
-        .from(this.tableName)
-        .select('uuid, title, description, content, type, metadata, embedding')
-        .not('embedding', 'is', null);
-
-      if (companyId) {
-        dbQuery = dbQuery.eq('company_id', companyId);
-      }
-
-      const { data, error } = await dbQuery;
+      const { data, error } = await this.supabase.rpc('match_knowledge_items', {
+        query_embedding: queryEmbedding,
+        match_threshold: threshold,
+        match_count: limit,
+        filter_company_id: companyId || null
+      });
 
       if (error) throw new Error(`Semantic search failed: ${error.message}`);
 
-      // Calculate cosine similarity for each item (same as original implementation)
-      const results: SearchResult[] = [];
-
-      data.forEach((item: any) => {
-        if (item.embedding) {
-          // Ensure embedding is an array of numbers
-          let embedding = item.embedding;
-          if (typeof embedding === 'string') {
-            try {
-              embedding = JSON.parse(embedding);
-            } catch (e) {
-              console.error('Failed to parse embedding string:', e);
-              return;
-            }
-          }
-          
-          if (Array.isArray(embedding) && embedding.length > 0) {
-            const similarity = this.cosineSimilarity(queryEmbedding, embedding);
-            
-            if (similarity >= threshold) {
-              results.push({
-                id: item.uuid,
-                title: item.title,
-                description: item.description,
-                content: item.content,
-                type: item.type,
-                score: similarity,
-                metadata: item.metadata
-              });
-            }
-          } else {
-            console.error('Invalid embedding format for item:', item.uuid);
-          }
-        }
-      });
-
-      // Sort by similarity score and limit results
-      return results
-        .sort((a, b) => b.score - a.score)
-        .slice(0, limit);
+      return (data || []).map((item: any) => ({
+        id: item.uuid,
+        title: item.title,
+        description: item.description,
+        content: item.content,
+        type: item.type,
+        score: threshold,
+        metadata: item.metadata
+      }));
 
     } catch (error) {
       console.error('Semantic search error:', error);
       return [];
-    }
-  }
-
-  // Add cosine similarity function (from original implementation)
-  private cosineSimilarity(a: number[], b: number[]): number {
-    try {
-      // Validate inputs
-      if (!Array.isArray(a) || !Array.isArray(b)) {
-        console.error('Cosine similarity: inputs are not arrays', typeof a, typeof b);
-        return 0;
-      }
-      
-      if (a.length !== b.length) {
-        console.error('Cosine similarity: arrays have different lengths', a.length, b.length);
-        return 0;
-      }
-
-      if (a.length === 0) {
-        console.error('Cosine similarity: arrays are empty');
-        return 0;
-      }
-
-      const dotProduct = a.reduce((sum, val, i) => sum + val * b[i], 0);
-      const magnitudeA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
-      const magnitudeB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
-      
-      if (magnitudeA === 0 || magnitudeB === 0) {
-        return 0;
-      }
-      
-      return dotProduct / (magnitudeA * magnitudeB);
-    } catch (error) {
-      console.error('Error in cosine similarity calculation:', error);
-      return 0;
     }
   }
 

@@ -269,6 +269,45 @@ CREATE INDEX IF NOT EXISTS idx_vezlo_knowledge_file_url
 ON vezlo_knowledge_items(file_url) WHERE file_url IS NOT NULL;
 
 -- ============================================================================
+-- SEMANTIC SEARCH FUNCTION
+-- ============================================================================
+-- Based on Supabase blog: https://supabase.com/blog/openai-embeddings-postgres-vector
+
+CREATE OR REPLACE FUNCTION match_knowledge_items(
+  query_embedding vector(1536),
+  match_threshold float,
+  match_count int,
+  filter_company_id bigint DEFAULT NULL
+)
+RETURNS TABLE (
+  uuid uuid,
+  title text,
+  description text,
+  content text,
+  type text,
+  metadata jsonb
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    k.uuid,
+    k.title,
+    k.description,
+    k.content,
+    k.type,
+    k.metadata
+  FROM vezlo_knowledge_items k
+  WHERE k.embedding IS NOT NULL
+    AND k.embedding <#> query_embedding < match_threshold
+    AND (filter_company_id IS NULL OR k.company_id = filter_company_id)
+  ORDER BY k.embedding <#> query_embedding ASC
+  LIMIT LEAST(match_count, 10);
+END;
+$$;
+
+-- ============================================================================
 -- ROW LEVEL SECURITY (Optional but Recommended)
 -- ============================================================================
 
