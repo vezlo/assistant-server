@@ -700,4 +700,4 @@ This project is dual-licensed:
 
 ---
 
-**Status**: ✅ Production Ready | **Version**: 2.0.0 | **Node.js**: 20+ | **TypeScript**: 5+
+**Status**: ✅ Production Ready | **Version**: 2.0.1 | **Node.js**: 20+ | **TypeScript**: 5+

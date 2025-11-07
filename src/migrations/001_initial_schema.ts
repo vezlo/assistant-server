@@ -117,7 +117,8 @@ export async function up(knex: Knex): Promise<void> {
   `);
 
   // Sparse indexes for better performance
-  await knex.schema.raw('CREATE INDEX IF NOT EXISTS idx_vezlo_knowledge_content ON vezlo_knowledge_items(content) WHERE content IS NOT NULL');
+  // Note: idx_vezlo_knowledge_content is NOT created here because btree indexes fail on large content (>2704 bytes).
+  // It was removed in migration 003. Full-text search is handled by the GIN index above.
   await knex.schema.raw('CREATE INDEX IF NOT EXISTS idx_vezlo_knowledge_file_url ON vezlo_knowledge_items(file_url) WHERE file_url IS NOT NULL');
 }
 

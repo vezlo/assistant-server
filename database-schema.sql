@@ -34,6 +34,10 @@ INSERT INTO knex_migrations (name, batch, migration_time)
 SELECT '002_multitenancy_schema.ts', 1, NOW()
 WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '002_multitenancy_schema.ts');
 
+INSERT INTO knex_migrations (name, batch, migration_time) 
+SELECT '003_drop_content_index.ts', 1, NOW()
+WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '003_drop_content_index.ts');
+
 -- Set migration lock to unlocked (0 = unlocked, 1 = locked)
 INSERT INTO knex_migrations_lock (index, is_locked) 
 VALUES (1, 0)
@@ -262,8 +266,9 @@ ON vezlo_knowledge_items USING ivfflat (embedding vector_cosine_ops)
 WHERE embedding IS NOT NULL;
 
 -- Sparse indexes for better performance
-CREATE INDEX IF NOT EXISTS idx_vezlo_knowledge_content
-ON vezlo_knowledge_items(content) WHERE content IS NOT NULL;
+-- Note: idx_vezlo_knowledge_content was removed in migration 003
+-- because btree indexes fail on large content (>2704 bytes).
+-- Full-text search is handled by the GIN index above.
 
 CREATE INDEX IF NOT EXISTS idx_vezlo_knowledge_file_url
 ON vezlo_knowledge_items(file_url) WHERE file_url IS NOT NULL;
