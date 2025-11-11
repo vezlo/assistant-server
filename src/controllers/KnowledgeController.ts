@@ -239,7 +239,7 @@ export class KnowledgeController {
 
   async search(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const { query, limit = '5', threshold = '0.7', type = 'hybrid' } = req.body;
+      const { query, limit = '5', threshold = '0.5', type = 'semantic' } = req.body;
 
       if (!query) {
         res.status(400).json({ error: 'query is required' });
@@ -309,9 +309,9 @@ export class KnowledgeController {
 
       // Perform knowledge base search
       const searchResults = await this.knowledgeBase.search(query, {
-        limit: 3,
-        threshold: 0.7,
-        type: 'hybrid',
+        limit: 5,
+        threshold: 0.5, // Balanced precision/recall (0.5 is industry standard)
+        type: 'semantic', // Modern RAG best practice: semantic-only for better context
         company_id: companyId
       });
 

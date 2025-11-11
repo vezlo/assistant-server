@@ -38,6 +38,10 @@ INSERT INTO knex_migrations (name, batch, migration_time)
 SELECT '003_drop_content_index.ts', 1, NOW()
 WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '003_drop_content_index.ts');
 
+INSERT INTO knex_migrations (name, batch, migration_time) 
+SELECT '004_add_vector_search_rpc.ts', 1, NOW()
+WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '004_add_vector_search_rpc.ts');
+
 -- Set migration lock to unlocked (0 = unlocked, 1 = locked)
 INSERT INTO knex_migrations_lock (index, is_locked) 
 VALUES (1, 0)
@@ -318,3 +322,53 @@ CREATE POLICY "Service role can access all knowledge items" ON vezlo_knowledge_i
 --
 -- CREATE POLICY "Users can access their company knowledge" ON vezlo_knowledge_items
 --   FOR ALL USING (company_id = auth.jwt() ->> 'company_id');
+
+-- ============================================================================
+-- RPC FUNCTION FOR OPTIMIZED VECTOR SEARCH
+-- ============================================================================
+
+-- This function uses pgvector's <=> operator for efficient nearest-neighbor search
+-- directly in the database, avoiding the need to fetch all records and calculate
+-- similarity in Node.js. This provides significant performance improvements,
+-- especially for large knowledge bases.
+CREATE OR REPLACE FUNCTION match_vezlo_knowledge(
+  query_embedding vector(1536),
+  match_threshold float DEFAULT 0.5,
+  match_count int DEFAULT 10,
+  filter_company_id bigint DEFAULT NULL
+)
+RETURNS TABLE (
+  id bigint,
+  uuid uuid,
+  title text,
+  description text,
+  content text,
+  type text,
+  metadata jsonb,
+  embedding vector(1536),
+  company_id bigint,
+  similarity float
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    ki.id,
+    ki.uuid,
+    ki.title,
+    ki.description,
+    ki.content,
+    ki.type,
+    ki.metadata,
+    ki.embedding,
+    ki.company_id,
+    1 - (ki.embedding <=> query_embedding) AS similarity
+  FROM vezlo_knowledge_items ki
+  WHERE ki.embedding IS NOT NULL
+    AND (filter_company_id IS NULL OR ki.company_id = filter_company_id)
+    AND (1 - (ki.embedding <=> query_embedding)) >= match_threshold
+  ORDER BY ki.embedding <=> query_embedding
+  LIMIT match_count;
+END;
+$$;

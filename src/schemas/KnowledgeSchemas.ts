@@ -46,8 +46,8 @@ export const KnowledgeSchemas = {
     properties: {
       query: { type: 'string', description: 'Search query' },
       limit: { type: 'integer', default: 5, description: 'Max results' },
-      threshold: { type: 'number', default: 0.7, description: 'Similarity threshold' },
-      type: { type: 'string', enum: ['semantic', 'keyword', 'hybrid'], default: 'hybrid', description: 'Search type' }
+      threshold: { type: 'number', default: 0.5, description: 'Similarity threshold (0.5 is balanced)' },
+      type: { type: 'string', enum: ['semantic', 'keyword', 'hybrid'], default: 'semantic', description: 'Search type (semantic recommended)' }
     }
   },
 

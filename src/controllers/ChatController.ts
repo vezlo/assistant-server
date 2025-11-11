@@ -237,9 +237,9 @@ export class ChatController {
           logger.info(`🔍 Searching KB: query="${userMessageContent.substring(0, 50)}...", companyId=${companyId}`);
           
           const searchResults = await aiService.knowledgeBaseService.search(userMessageContent, {
-            limit: 3,
-            threshold: 0.5, // Lower threshold for better recall
-            type: 'hybrid',
+            limit: 5,
+            threshold: 0.5, // Balanced precision/recall (0.5 is industry standard)
+            type: 'semantic', // Modern RAG best practice: semantic-only for better context
             company_id: companyId
           });
 
