@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2025-11-11
+
+### Added
+- RPC-based vector search using pgvector's `<=>` operator for 10-100x performance improvement
+- Intent classification service for intelligent query routing (greetings, personality, knowledge)
+- Configurable chat history length via `CHAT_HISTORY_LENGTH` environment variable (default: 2)
+- Centralized service initialization module for consistent configuration across deployment targets
+
+### Changed
+- Search parameters updated to industry standards: limit 5, threshold 0.5, semantic-only
+- Optimized RAG pipeline with intent-based direct responses for non-knowledge queries
+- System prompt improved with enhanced guardrails and generic organization support
+- Database migration 004: Added `match_vezlo_knowledge()` RPC function
+
+### Improved
+- Reduced token usage with optimized chat history (10→2 messages)
+- Faster semantic search with database-side similarity calculations
+- Better response quality with increased context (3→5 knowledge results)
+
 ## [2.0.1] - 2025-11-07
 
 ### Changed
