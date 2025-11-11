@@ -15,13 +15,9 @@ import { ChatController } from './controllers/ChatController';
 import { KnowledgeController } from './controllers/KnowledgeController';
 import { AuthController } from './controllers/AuthController';
 import { ApiKeyController } from './controllers/ApiKeyController';
-import { ChatManager } from './services/ChatManager';
-import { KnowledgeBaseService } from './services/KnowledgeBaseService';
-import { AIService } from './services/AIService';
-import { ApiKeyService } from './services/ApiKeyService';
-import { UnifiedStorage } from './storage/UnifiedStorage';
 import { runMigrations, getMigrationStatus } from './config/knex';
 import { createClient } from '@supabase/supabase-js';
+import { initializeCoreServices } from './bootstrap/initializeServices';
 
 // Initialize Supabase client - use SERVICE_KEY for server-side operations
 // Service key bypasses RLS and is required for API key authentication
@@ -86,34 +82,16 @@ async function initializeServices() {
   try {
     logger.info('Initializing Vezlo services...');
 
-    // Initialize storage
-    const storage = new UnifiedStorage(supabase, 'vezlo');
-
-    // Initialize knowledge base first
-    const knowledgeBase = new KnowledgeBaseService({ 
-      supabase, 
-      tableName: 'vezlo_knowledge_items' 
+    const { controllers } = initializeCoreServices({
+      supabase,
+      tablePrefix: 'vezlo',
+      knowledgeTableName: 'vezlo_knowledge_items'
     });
 
-    // Initialize AI service with knowledge base
-    const aiService = new AIService({
-      openaiApiKey: process.env.OPENAI_API_KEY!,
-      organizationName: process.env.ORGANIZATION_NAME || 'Vezlo',
-      assistantName: process.env.ASSISTANT_NAME || 'AI Assistant',
-      platformDescription: process.env.PLATFORM_DESCRIPTION || 'AI-powered assistant platform',
-      supportEmail: process.env.SUPPORT_EMAIL || 'support@vezlo.com',
-      knowledgeBaseService: knowledgeBase
-    });
-    const chatManager = new ChatManager({ aiService, storage });
-
-    // Initialize controllers
-    chatController = new ChatController(chatManager, storage, supabase);
-    knowledgeController = new KnowledgeController(knowledgeBase, aiService);
-    authController = new AuthController(supabase);
-    
-    // Initialize API key service and controller
-    const apiKeyService = new ApiKeyService(supabase);
-    apiKeyController = new ApiKeyController(apiKeyService);
+    chatController = controllers.chatController;
+    knowledgeController = controllers.knowledgeController;
+    authController = controllers.authController;
+    apiKeyController = controllers.apiKeyController;
 
     logger.info('All services initialized successfully');
   } catch (error) {

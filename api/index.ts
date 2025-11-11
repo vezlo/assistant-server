@@ -11,7 +11,6 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
-import { Server } from 'socket.io';
 import { config } from 'dotenv';
 import path from 'path';
 
@@ -24,13 +23,7 @@ import { errorHandler, notFoundHandler } from '../dist/src/middleware/errorHandl
 import { authenticateUser, authenticateApiKey, authenticateUserOrApiKey } from '../dist/src/middleware/auth';
 
 // Import services from compiled dist
-import { AIService } from '../dist/src/services/AIService';
-import { ChatManager } from '../dist/src/services/ChatManager';
-import { KnowledgeBaseService } from '../dist/src/services/KnowledgeBaseService';
-import { ApiKeyService } from '../dist/src/services/ApiKeyService';
-import { UnifiedStorage } from '../dist/src/storage/UnifiedStorage';
-
-// Import controllers from compiled dist
+import { initializeCoreServices } from '../dist/src/bootstrap/initializeServices';
 import { ChatController } from '../dist/src/controllers/ChatController';
 import { KnowledgeController } from '../dist/src/controllers/KnowledgeController';
 import { AuthController } from '../dist/src/controllers/AuthController';
@@ -77,10 +70,6 @@ app.use('/api/', limiter);
 
 // Global services (initialized lazily)
 let servicesInitialized = false;
-let aiService: AIService;
-let chatManager: ChatManager;
-let knowledgeBase: KnowledgeBaseService;
-let storage: UnifiedStorage;
 let chatController: ChatController;
 let knowledgeController: KnowledgeController;
 let authController: AuthController;
@@ -97,42 +86,16 @@ async function initializeServices() {
     supabase = initializeSupabase();
     logger.info('Supabase client initialized');
 
-    // Initialize storage
-    storage = new UnifiedStorage(supabase, 'vezlo');
-
-    // Initialize knowledge base
-    knowledgeBase = new KnowledgeBaseService({
+    const { controllers } = initializeCoreServices({
       supabase,
-      tableName: 'vezlo_knowledge_items'
+      tablePrefix: 'vezlo',
+      knowledgeTableName: 'vezlo_knowledge_items'
     });
 
-    // Initialize AI service
-    aiService = new AIService({
-      openaiApiKey: process.env.OPENAI_API_KEY!,
-      organizationName: process.env.ORGANIZATION_NAME || 'Vezlo',
-      assistantName: process.env.ASSISTANT_NAME || 'Vezlo Assistant',
-      model: process.env.AI_MODEL || 'gpt-4',
-      temperature: parseFloat(process.env.AI_TEMPERATURE || '0.7'),
-      maxTokens: parseInt(process.env.AI_MAX_TOKENS || '1000'),
-      knowledgeBaseService: knowledgeBase
-    });
-
-    // Initialize chat manager
-    chatManager = new ChatManager({
-      aiService,
-      storage,
-      enableConversationManagement: true,
-      conversationTimeout: 3600000
-    });
-
-    // Initialize controllers
-    chatController = new ChatController(chatManager, storage, supabase);
-    knowledgeController = new KnowledgeController(knowledgeBase, aiService);
-    authController = new AuthController(supabase);
-    
-    // Initialize API key service and controller
-    const apiKeyService = new ApiKeyService(supabase);
-    apiKeyController = new ApiKeyController(apiKeyService);
+    chatController = controllers.chatController;
+    knowledgeController = controllers.knowledgeController;
+    authController = controllers.authController;
+    apiKeyController = controllers.apiKeyController;
 
     servicesInitialized = true;
     logger.info('All services initialized successfully');

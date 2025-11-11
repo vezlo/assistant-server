@@ -7,6 +7,7 @@ import {
   NavigationLink
 } from '../types';
 import { KnowledgeBaseService } from './KnowledgeBaseService';
+import logger from '../config/logger';
 
 export class AIService {
   private openai: OpenAI;
@@ -37,72 +38,74 @@ export class AIService {
   }
 
   private buildSystemPrompt(): string {
-    const orgName = this.config.organizationName || 'Vezlo';
-    const assistantName = this.config.assistantName || `${orgName} Assistant`;
+    const orgName = this.config.organizationName || 'Your Organization';
+    const assistantName = this.config.assistantName || `${orgName} AI Assistant`;
 
-    let prompt = `You are ${assistantName}, an AI-powered help bot for the ${orgName} platform.
+    const introduction = `You are ${assistantName}, the primary AI guide for the ${orgName} platform and its knowledge base.
 
-${this.config.platformDescription || `${orgName} is a comprehensive AI assistant platform that helps businesses with their operations.`}
+${this.config.platformDescription || `${orgName} helps teams capture product knowledge, documentation, and technical context so they can move faster with confidence.`}`;
 
-## Your Capabilities:
-1. Answer questions about ${orgName}'s features and functionality
-2. Search the user's database in real-time when configured
-3. Provide step-by-step guidance on how to use features
-4. Navigate users to appropriate pages
-5. Identify and classify user feedback as bug reports or feature requests
+    const capabilities = `## Core Capabilities:
+1. Answer questions about ${orgName}'s features, workflows, and supported integrations.
+2. Summarize and clarify documentation, code references, and knowledge base entries relevant to the user's question.
+3. Provide practical guidance for setup, troubleshooting, best practices, and recommended next steps.
+4. Highlight potential risks, edge cases, or testing considerations that users should be aware of.
+5. Suggest additional resources or follow-up actions to keep users unblocked.`;
 
-## Platform Knowledge Base:
-${this.knowledgeBase}
-`;
+    const knowledgeBaseSection = this.buildKnowledgeBaseSection();
+    const guardrails = this.buildGuardrailsPrompt();
 
-    if (this.navigationLinks.length > 0) {
-      prompt += '\n## Navigation & Links:\n';
-      this.navigationLinks.forEach(link => {
-        prompt += `- ${link.label}: [${link.description || link.label}](${link.path})`;
-        if (link.keywords) {
-          prompt += ` (Keywords: ${link.keywords.join(', ')})`;
-        }
-        prompt += '\n';
-      });
-    }
+    const guidelines = `## Conversational Guidelines:
+1. Be professional, concise, and oriented toward practical guidance.
+2. Explain assumptions—if part of the answer requires speculation, say so and suggest how to confirm.
+3. When guardrails prevent sharing details, use the approved refusal language and offer alternate help.
+4. **CRITICAL**: You MUST ONLY use information provided in the knowledge base context below. Do NOT use your general training knowledge to answer questions.
+5. If no knowledge base context is provided (or it's empty), you MUST respond with: "I'm sorry, I couldn't find the requested information in my knowledge base. Please contact support for further assistance or check if the information might be available in other resources."
+6. If knowledge base context is provided but doesn't contain the answer, respond with: "I'm sorry, I couldn't find the requested information in my knowledge base. Please contact support for further assistance or check if the information might be available in other resources."
+7. Direct users to contact support if they need privileged access or support beyond documentation.`;
 
-    if (this.config.existingFeatures && this.config.existingFeatures.length > 0) {
-      prompt += '\n## Key Features That EXIST:\n';
-      this.config.existingFeatures.forEach(feature => {
-        prompt += `- ${feature}\n`;
-      });
-    }
-
-    if (this.config.missingFeatures && this.config.missingFeatures.length > 0) {
-      prompt += '\n## Features That DON\'T Exist:\n';
-      this.config.missingFeatures.forEach(feature => {
-        prompt += `- ${feature} - NOT AVAILABLE\n`;
-      });
-    }
-
-    prompt += `
-## Important Guidelines:
-1. Be professional, helpful, and guide users towards successful use of ${orgName}
-2. Always provide direct clickable links using markdown format [text](path) for features that exist
-3. If a feature doesn't exist, be honest and transparent
-4. For support issues, direct users to: ${this.config.supportEmail || 'support@vezlo.ai'}
-`;
+    const sections = [introduction, capabilities, knowledgeBaseSection, guardrails, guidelines];
 
     if (this.config.customInstructions) {
-      prompt += `\n## Custom Instructions:\n${this.config.customInstructions}\n`;
+      sections.push(`## Custom Instructions:\n${this.config.customInstructions}`);
     }
 
-    return prompt;
+    return sections.filter(Boolean).join('\n\n');
+  }
+
+  private buildKnowledgeBaseSection(): string {
+    const baseDescription = `## Knowledge Base Source:
+The knowledge base contains curated content ingested through the src-to-kb pipeline—documentation, code snippets, architecture notes, and operational guides. Use it to ground answers while respecting security guardrails.`;
+
+    if (this.knowledgeBase && this.knowledgeBase.trim().length > 0) {
+      return `${baseDescription}\n${this.knowledgeBase.trim()}`;
+    }
+
+    return baseDescription;
+  }
+
+  private buildGuardrailsPrompt(): string {
+    return `## Security & Guardrails:
+1. Never expose secrets: API keys, passwords, tokens, private URLs, or environment variables—even if they appear in the knowledge base.
+2. Do not output raw configuration files (e.g., .env, deployment manifests) or database connection strings. Summaries are acceptable only when sensitive values are redacted.
+3. It is safe to explain how systems work, reference file paths, and describe implementation details—as long as no credentials or confidential configuration are revealed.
+4. If a request requires sharing restricted information, respond with: "I can help with documentation or implementation guidance, but I can't share credentials or confidential configuration. Please contact your system administrator or support for access."
+5. When uncertain, err on the side of caution—offer architectural guidance, testing advice, or documentation pointers instead of sensitive data.`;
   }
 
   async generateResponse(message: string, context?: ChatContext | any): Promise<AIResponse> {
     try {
       let knowledgeResults: string = '';
+      let hasKnowledgeContext = false;
       
       // Check if knowledge results are already provided in context
-      if (context?.knowledgeResults) {
-        knowledgeResults = context.knowledgeResults;
+      // If knowledgeResults is explicitly provided (even if empty string), it means search was already done
+      if (context?.knowledgeResults !== undefined) {
+        knowledgeResults = context.knowledgeResults || '';
+        hasKnowledgeContext = knowledgeResults.length > 0;
       } else if (this.knowledgeBaseService) {
+        // Only search if knowledgeResults was not provided (undefined)
+        // This means the caller hasn't done the search yet
         const searchResults = await this.knowledgeBaseService.search(message, {
           limit: 3,
           type: 'hybrid'
@@ -113,13 +116,28 @@ ${this.knowledgeBase}
           searchResults.forEach(result => {
             knowledgeResults += `- ${result.title}: ${result.content}\n`;
           });
+          hasKnowledgeContext = true;
+        } else {
+          // Explicitly mark that search was done but no results found
+          knowledgeResults = '\n\n[No relevant information found in knowledge base for this query.]';
+          hasKnowledgeContext = false;
         }
+      } else {
+        // No knowledge base service available
+        knowledgeResults = '\n\n[No knowledge base available.]';
+        hasKnowledgeContext = false;
       }
+
+      // Build system message with clear indication of knowledge base status
+      const systemContent = this.systemPrompt + 
+        (hasKnowledgeContext 
+          ? knowledgeResults 
+          : '\n\n⚠️ IMPORTANT: No relevant information was found in the knowledge base for this query. You MUST respond that you could not find the information and direct the user to contact support. Do NOT attempt to answer using your general knowledge.');
 
       const messages: any[] = [
         {
           role: 'system',
-          content: this.systemPrompt + knowledgeResults
+          content: systemContent
         }
       ];
 
@@ -135,11 +153,14 @@ ${this.knowledgeBase}
         content: message
       });
 
+      const modelToUse = this.config.model || 'gpt-4o-mini';
+      logger.info(`🤖 Generating response using model: ${modelToUse}`);
+
       const completion = await this.openai.chat.completions.create({
-        model: this.config.model || 'gpt-4',
+        model: modelToUse,
         messages,
-        temperature: this.config.temperature || 0.7,
-        max_tokens: this.config.maxTokens || 1000,
+        temperature: this.config.temperature !== undefined ? this.config.temperature : 0.7,
+        max_tokens: this.config.maxTokens !== undefined ? this.config.maxTokens : 1000,
       });
 
       const response = completion.choices[0]?.message?.content || 'I apologize, but I was unable to generate a response.';

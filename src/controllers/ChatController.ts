@@ -4,16 +4,28 @@ import { ChatManager } from '../services/ChatManager';
 import { UnifiedStorage } from '../storage/UnifiedStorage';
 import { AuthenticatedRequest } from '../middleware/auth';
 import logger from '../config/logger';
+import { IntentService, IntentClassificationResult } from '../services/IntentService';
+import { ChatConversation, ChatMessage, StoredChatMessage } from '../types';
 
 export class ChatController {
   private chatManager: ChatManager;
   private storage: UnifiedStorage;
   private supabase: SupabaseClient;
+  private chatHistoryLength: number;
+  private intentService?: IntentService;
 
-  constructor(chatManager: ChatManager, storage: UnifiedStorage, supabase: SupabaseClient) {
+  constructor(
+    chatManager: ChatManager,
+    storage: UnifiedStorage,
+    supabase: SupabaseClient,
+    options: { historyLength?: number; intentService?: IntentService } = {}
+  ) {
     this.chatManager = chatManager;
     this.storage = storage;
     this.supabase = supabase;
+    const { historyLength } = options;
+    this.chatHistoryLength = typeof historyLength === 'number' && historyLength > 0 ? historyLength : 2;
+    this.intentService = options.intentService;
   }
 
   // Create a new conversation
@@ -199,45 +211,59 @@ export class ChatController {
       const userMessageContent = userMessage.content;
 
       // Get conversation context (recent messages)
-      const messages = await this.storage.getMessages(conversationId, 10);
+      const messages = await this.chatManager.getRecentMessages(conversationId, this.chatHistoryLength);
+      logger.info(`📜 Retrieved ${messages.length} message(s) from conversation history (limit: ${this.chatHistoryLength})`);
       
+      const conversation = await this.storage.getConversation(conversationId);
+
+      // Run intent classification to decide handling strategy
+      const intentResult = await this.classifyIntent(userMessageContent, messages);
+      const handled = await this.handleIntentResult(intentResult, userMessage, conversationId, conversation, res);
+      if (handled) {
+        return;
+      }
+
       // Get knowledge base search results if available
       const aiService = (this.chatManager as any).aiService;
-      let knowledgeResults = '';
+      let knowledgeResults: string | null = null; // null = search done, no results; undefined = not searched yet
       
       // Get conversation to extract company_id for knowledge base search
-      const conversation = await this.storage.getConversation(conversationId);
-      const companyId = (req as AuthenticatedRequest).profile?.companyId || conversation?.organizationId;
+      // Note: profile.companyId and conversation.organizationId should contain integer IDs (as strings)
+      const companyIdRaw = (req as AuthenticatedRequest).profile?.companyId || conversation?.organizationId;
+      const companyId = companyIdRaw ? (typeof companyIdRaw === 'string' ? parseInt(companyIdRaw, 10) : companyIdRaw) : undefined;
       
       if (aiService && aiService.knowledgeBaseService) {
         try {
-          console.log('🔍 Searching knowledge base for:', userMessageContent);
-          console.log('🔑 Company ID:', companyId);
+          logger.info(`🔍 Searching KB: query="${userMessageContent.substring(0, 50)}...", companyId=${companyId}`);
           
           const searchResults = await aiService.knowledgeBaseService.search(userMessageContent, {
             limit: 3,
-            threshold: 0.7,
+            threshold: 0.5, // Lower threshold for better recall
             type: 'hybrid',
-            company_id: companyId ? parseInt(companyId) : undefined
+            company_id: companyId
           });
 
-          console.log('📊 Found knowledge base results:', searchResults.length);
+          logger.info(`📊 Found knowledge base results: ${searchResults.length}`);
 
           if (searchResults.length > 0) {
             knowledgeResults = '\n\nRelevant information from knowledge base:\n';
             searchResults.forEach((result: any) => {
               knowledgeResults += `- ${result.title}: ${result.content}\n`;
             });
-            console.log('✅ Knowledge context prepared:', knowledgeResults.substring(0, 200));
+            logger.info('✅ Knowledge context prepared');
           } else {
-            console.log('⚠️  No knowledge base results found');
+            // Set to empty string to indicate search was done but no results found
+            knowledgeResults = '';
+            logger.info('⚠️  No knowledge base results found; will return appropriate fallback response');
           }
         } catch (error) {
           console.error('❌ Failed to search knowledge base:', error);
           logger.error('Failed to search knowledge base:', error);
+          // On error, set to null so AIService knows search was attempted
+          knowledgeResults = null;
         }
       } else {
-        console.log('⚠️  AI service or knowledge base service not available');
+        logger.warn('⚠️  AI service or knowledge base service not available');
       }
       
       // Build context for AI
@@ -246,30 +272,19 @@ export class ChatController {
           role: msg.role as 'user' | 'assistant' | 'system',
           content: msg.content
         })),
-        knowledgeResults
+        knowledgeResults: knowledgeResults ?? undefined // Convert null to undefined for cleaner check
       };
 
       // Generate AI response using the actual user message content
       const response = await aiService.generateResponse(userMessageContent, chatContext);
 
-      // Save AI message to database
-      // Note: The storage layer will handle UUID to internal ID conversion
-      const assistantMessage = await this.storage.saveMessage({
-        conversationId: conversationId, // This is the conversation UUID
-        threadId: conversationId,
-        role: 'assistant',
+      const assistantMessage = await this.saveAssistantMessage({
+        conversation,
+        conversationId,
+        parentMessageId: uuid,
         content: response.content,
-        parentMessageId: uuid, // This is the parent message UUID
-        toolResults: response.toolResults,
-        createdAt: new Date()
+        toolResults: response.toolResults
       });
-
-      // Update conversation message count (conversation already fetched above)
-      if (conversation) {
-        await this.storage.updateConversation(conversationId, {
-          messageCount: conversation.messageCount + 1
-        });
-      }
 
       res.json({
         uuid: assistantMessage.id,
@@ -434,6 +449,170 @@ export class ChatController {
         message: error instanceof Error ? error.message : 'Unknown error'
       });
     }
+  }
+
+  private async classifyIntent(message: string, history: ChatMessage[]): Promise<IntentClassificationResult> {
+    if (!this.intentService) {
+      return {
+        intent: 'knowledge',
+        needsGuardrail: false,
+        contactEmail: null
+      };
+    }
+
+    const resolvedHistory = Array.isArray(history) ? history : [];
+
+    logger.info('🧭 Classifying user intent...');
+
+    return this.intentService.classify({
+      message,
+      conversationHistory: resolvedHistory
+    });
+  }
+
+  private async handleIntentResult(
+    result: IntentClassificationResult,
+    userMessage: StoredChatMessage,
+    conversationId: string,
+    conversation: ChatConversation | null,
+    res: Response
+  ): Promise<boolean> {
+    if (result.needsGuardrail && result.intent !== 'guardrail') {
+      await this.respondWithAssistantMessage({
+        conversation,
+        conversationId,
+        parentMessageId: userMessage.id,
+        content: `I can help with documentation or implementation guidance, but I can't share credentials or confidential configuration. Please contact your system administrator or support for access.`
+      }, res);
+      return true;
+    }
+
+    logger.info(`🧾 Intent result: ${result.intent}${result.needsGuardrail ? ' (guardrail triggered)' : ''}`);
+
+    switch (result.intent) {
+      case 'greeting':
+        await this.respondWithAssistantMessage({
+          conversation,
+          conversationId,
+          parentMessageId: userMessage.id,
+          content: 'Hello! How can I help you today?'
+        }, res);
+        return true;
+      case 'personality':
+        // Get assistant name and organization from environment
+        const assistantName = process.env.ASSISTANT_NAME || 'AI Assistant';
+        const orgName = process.env.ORGANIZATION_NAME || 'Your Organization';
+        await this.respondWithAssistantMessage({
+          conversation,
+          conversationId,
+          parentMessageId: userMessage.id,
+          content: `I'm ${assistantName}, your AI assistant for ${orgName}. I help teams understand and work with the ${orgName} platform by answering questions about features, documentation, and technical details. How can I assist you today?`
+        }, res);
+        return true;
+      case 'clarification':
+        await this.respondWithAssistantMessage({
+          conversation,
+          conversationId,
+          parentMessageId: userMessage.id,
+          content: "I'm not sure I understood. Could you clarify what you need help with?"
+        }, res);
+        return true;
+      case 'guardrail':
+        await this.respondWithAssistantMessage({
+          conversation,
+          conversationId,
+          parentMessageId: userMessage.id,
+          content: `I can help with documentation or implementation guidance, but I can't share credentials or confidential configuration. Please contact your system administrator or support for access.`
+        }, res);
+        return true;
+      case 'human_support_email':
+        await this.respondWithAssistantMessage({
+          conversation,
+          conversationId,
+          parentMessageId: userMessage.id,
+          content: `Thanks for sharing your email. Our team will reach out soon—response times may vary depending on support volume.`
+        }, res);
+        logger.info('📨 Recorded human support email from user.');
+        return true;
+      case 'human_support_request':
+        if (result.contactEmail) {
+          await this.respondWithAssistantMessage({
+            conversation,
+            conversationId,
+            parentMessageId: userMessage.id,
+            content: `Thanks for sharing your email. Our team will reach out soon—response times may vary depending on support volume.`
+          }, res);
+          logger.info('📨 Human support request with email handled in a single step.');
+        } else {
+          await this.respondWithAssistantMessage({
+            conversation,
+            conversationId,
+            parentMessageId: userMessage.id,
+            content: 'I can connect you with a human teammate. Please share your email address so we can follow up.'
+          }, res);
+          logger.info('🙋 Human support requested; awaiting email from user.');
+        }
+        return true;
+      default:
+        logger.info('📚 Intent requires knowledge lookup; proceeding with RAG flow.');
+        return false;
+    }
+  }
+
+  private async respondWithAssistantMessage(
+    payload: {
+      conversation: ChatConversation | null;
+      conversationId: string;
+      parentMessageId?: string;
+      content: string;
+      toolResults?: any;
+    },
+    res: Response
+  ): Promise<void> {
+    const assistantMessage = await this.saveAssistantMessage({
+      conversation: payload.conversation,
+      conversationId: payload.conversationId,
+      parentMessageId: payload.parentMessageId,
+      content: payload.content,
+      toolResults: payload.toolResults
+    });
+
+    res.json({
+      uuid: assistantMessage.id,
+      parent_message_uuid: payload.parentMessageId,
+      type: 'assistant',
+      content: assistantMessage.content,
+      status: 'completed',
+      created_at: assistantMessage.createdAt.toISOString()
+    });
+  }
+
+  private async saveAssistantMessage(options: {
+    conversation: ChatConversation | null;
+    conversationId: string;
+    parentMessageId?: string;
+    content: string;
+    toolResults?: any;
+  }): Promise<StoredChatMessage> {
+    const assistantMessage = await this.storage.saveMessage({
+      conversationId: options.conversationId,
+      threadId: options.conversationId,
+      role: 'assistant',
+      content: options.content,
+      parentMessageId: options.parentMessageId,
+      toolResults: options.toolResults,
+      createdAt: new Date()
+    });
+
+    if (options.conversation) {
+      const nextCount = (options.conversation.messageCount || 0) + 1;
+      await this.storage.updateConversation(options.conversationId, {
+        messageCount: nextCount
+      });
+      options.conversation.messageCount = nextCount;
+    }
+
+    return assistantMessage;
   }
 
 }

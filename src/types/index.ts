@@ -121,6 +121,7 @@ export interface ChatManagerConfig {
   enableConversationManagement?: boolean;
   conversationTimeout?: number;
   maxMessagesPerConversation?: number;
+  historyLength?: number;
 }
 
 export interface HandoffRequest {

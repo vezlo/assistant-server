@@ -13,11 +13,15 @@ export class ChatManager {
   private aiService: AIService;
   private config: ChatManagerConfig;
   private activeConversations: Map<string, ChatConversation>;
+  private historyLength: number;
 
   constructor(config: ChatManagerConfig) {
     this.config = config;
     this.aiService = config.aiService;
     this.activeConversations = new Map();
+    this.historyLength = typeof config.historyLength === 'number' && config.historyLength > 0
+      ? config.historyLength
+      : 2;
 
     if (config.conversationTimeout) {
       setInterval(() => this.cleanupExpiredConversations(), 60000);
@@ -105,7 +109,11 @@ export class ChatManager {
       ...context,
       conversationId: conversation.id || conversation.threadId,
       threadId: conversation.threadId,
-      conversationHistory: await this.getRecentMessages(conversation.threadId)
+      conversationHistory: await this.getRecentMessages(
+        conversation.threadId,
+        this.historyLength,
+        { includePendingMessage: true }
+      )
     };
 
     const aiResponse = await this.aiService.generateResponse(message, chatContext);
@@ -152,23 +160,73 @@ export class ChatManager {
     };
   }
 
-  async getRecentMessages(threadId: string, limit = 10): Promise<ChatMessage[]> {
+  async getRecentMessages(
+    threadId: string,
+    limit = this.historyLength,
+    options: { includePendingMessage?: boolean } = {}
+  ): Promise<ChatMessage[]> {
     if (!this.config.storage) {
       return [];
     }
 
+    const historyLimit = typeof limit === 'number' && limit > 0 ? limit : this.historyLength;
+    if (historyLimit <= 0) {
+      return [];
+    }
+
+    const includePending = options.includePendingMessage ?? false;
+
+    let conversation: ChatConversation | null = this.activeConversations.get(threadId) ?? null;
+    
+    if (!conversation && this.config.storage && this.config.enableConversationManagement) {
+      try {
+        conversation = await this.config.storage.getConversation(threadId);
+        if (conversation) {
+          this.activeConversations.set(threadId, conversation);
+        }
+      } catch (error) {
+        console.error('Failed to fetch conversation for history:', error);
+      }
+    }
+
+    let totalMessages = conversation?.messageCount ?? 0;
+    if (includePending) {
+      totalMessages += 1;
+    }
+
+    let offset = 0;
+    if (totalMessages > historyLimit) {
+      offset = totalMessages - historyLimit;
+    }
+
+    let messages: ChatMessage[] = [];
+
     try {
-      const messages = await this.config.storage.getMessages(threadId, limit);
-      return messages.map(msg => ({
-        role: msg.role,
-        content: msg.content,
-        createdAt: msg.createdAt,
-        toolResults: msg.toolResults
-      }));
+      const storedMessages = await this.config.storage.getMessages(threadId, historyLimit, offset);
+
+      if (storedMessages.length < historyLimit && offset > 0) {
+        // Fallback: fetch from start and take latest N in case message counts are out of sync
+        const retryMessages = await this.config.storage.getMessages(threadId, historyLimit);
+        messages = retryMessages.slice(-historyLimit).map(msg => ({
+          role: msg.role,
+          content: msg.content,
+          createdAt: msg.createdAt,
+          toolResults: msg.toolResults
+        }));
+      } else {
+        messages = storedMessages.slice(-historyLimit).map(msg => ({
+          role: msg.role,
+          content: msg.content,
+          createdAt: msg.createdAt,
+          toolResults: msg.toolResults
+        }));
+      }
     } catch (error) {
       console.error('Failed to get recent messages:', error);
       return [];
     }
+
+    return messages;
   }
 
   async getUserConversations(userId: string, organizationId?: string): Promise<ChatConversation[]> {

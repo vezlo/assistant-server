@@ -1,4 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
+import logger from '../config/logger';
 
 interface KnowledgeBaseConfig {
   supabase: SupabaseClient;
@@ -316,8 +317,12 @@ export class KnowledgeBaseService {
   async search(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
     try {
       const limit = options.limit || 5;
-      const threshold = options.threshold || 0.7;
+      // Lower threshold to 0.5 for better recall (0.7 was too restrictive)
+      const threshold = options.threshold || 0.5;
       const type = options.type || 'hybrid';
+
+      // Reduced logging - only essential info
+      logger.info(`🔎 Search: type=${type}, threshold=${threshold}, limit=${limit}, companyId=${options.company_id ?? 'all'}`);
 
       if (type === 'semantic') {
         return await this.semanticSearch(query, limit, threshold, options.company_id);
@@ -334,10 +339,13 @@ export class KnowledgeBaseService {
           index === self.findIndex(t => t.id === item.id)
         );
         
+        logger.info(`📊 Hybrid: ${semanticResults.length} semantic + ${keywordResults.length} keyword = ${unique.length} total`);
+        
         return unique.slice(0, limit);
       }
 
     } catch (error) {
+      console.error('Search error:', error);
       throw new Error(`Failed to search knowledge items: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -345,12 +353,17 @@ export class KnowledgeBaseService {
   private async semanticSearch(query: string, limit: number, threshold: number, companyId?: number): Promise<SearchResult[]> {
     try {
       const queryEmbedding = await this.generateEmbedding(query);
-      if (!queryEmbedding) return [];
+      if (!queryEmbedding) {
+        logger.error('Failed to generate query embedding');
+        return [];
+      }
+
+      // Semantic search logging removed - covered by main search log
 
       // Get all items with embeddings from database
       let dbQuery = this.supabase
         .from(this.tableName)
-        .select('uuid, title, description, content, type, metadata, embedding')
+        .select('uuid, title, description, content, type, metadata, embedding, company_id')
         .not('embedding', 'is', null);
 
       if (companyId) {
@@ -359,26 +372,54 @@ export class KnowledgeBaseService {
 
       const { data, error } = await dbQuery;
 
-      if (error) throw new Error(`Semantic search failed: ${error.message}`);
+      if (error) {
+        logger.error('Database query error:', error);
+        throw new Error(`Semantic search failed: ${error.message}`);
+      }
 
-      // Calculate cosine similarity for each item (same as original implementation)
+      if (!data || data.length === 0) {
+        logger.warn(`⚠️  No items found in DB for companyId=${companyId ?? 'all'}`);
+        return [];
+      }
+      
+      logger.info(`📦 Retrieved ${data.length} items with embeddings`);
+
+      // Calculate cosine similarity for each item
       const results: SearchResult[] = [];
+      const allSimilarities: Array<{ uuid: string; title: string; score: number }> = [];
 
       data.forEach((item: any) => {
         if (item.embedding) {
           // Ensure embedding is an array of numbers
           let embedding = item.embedding;
+          
+          // Handle different embedding formats from Supabase/PostgreSQL
           if (typeof embedding === 'string') {
             try {
               embedding = JSON.parse(embedding);
             } catch (e) {
-              console.error('Failed to parse embedding string:', e);
+              console.error(`Failed to parse embedding string for item ${item.uuid}:`, e);
               return;
             }
           }
           
+          // Handle pgvector format (might be wrapped in an object)
+          if (embedding && typeof embedding === 'object' && !Array.isArray(embedding)) {
+            if (embedding.embedding) {
+              embedding = embedding.embedding;
+            } else if (embedding.data) {
+              embedding = embedding.data;
+            }
+          }
+          
           if (Array.isArray(embedding) && embedding.length > 0) {
+            if (embedding.length !== queryEmbedding.length) {
+              console.warn(`⚠️  Embedding length mismatch for item ${item.uuid}: expected ${queryEmbedding.length}, got ${embedding.length}`);
+              return;
+            }
+            
             const similarity = this.cosineSimilarity(queryEmbedding, embedding);
+            allSimilarities.push({ uuid: item.uuid, title: item.title || 'Untitled', score: similarity });
             
             if (similarity >= threshold) {
               results.push({
@@ -392,10 +433,17 @@ export class KnowledgeBaseService {
               });
             }
           } else {
-            console.error('Invalid embedding format for item:', item.uuid);
+            console.error(`Invalid embedding format for item ${item.uuid}:`, typeof embedding, Array.isArray(embedding) ? embedding.length : 'not array');
           }
         }
       });
+
+      // Log results summary
+      if (allSimilarities.length > 0) {
+        const topSimilarities = allSimilarities.sort((a, b) => b.score - a.score).slice(0, 3);
+        const topScores = topSimilarities.map(s => `${s.title}:${s.score.toFixed(2)}`).join(', ');
+        logger.info(`✅ Found ${results.length} results above threshold (top: ${topScores})`);
+      }
 
       // Sort by similarity score and limit results
       return results
@@ -403,7 +451,7 @@ export class KnowledgeBaseService {
         .slice(0, limit);
 
     } catch (error) {
-      console.error('Semantic search error:', error);
+      logger.error('Semantic search error:', error);
       return [];
     }
   }

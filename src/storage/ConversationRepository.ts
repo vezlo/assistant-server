@@ -137,9 +137,11 @@ export class ConversationRepository {
 
   private async rowToConversation(row: any, fetchUuids: boolean = false): Promise<ChatConversation> {
     let userId = row.creator_id?.toString() || '1';
-    let organizationId = row.company_id?.toString();
+    // IMPORTANT: organizationId should ALWAYS be the integer ID (as string), NOT the UUID
+    // UUIDs are only for external API exposure, internal logic uses integer IDs
+    const organizationId = row.company_id?.toString();
 
-    // Fetch actual UUIDs if needed
+    // Fetch actual user UUID if needed (for external API responses)
     if (fetchUuids && row.creator_id) {
       const { data: userData } = await this.supabase
         .from(this.getTableName('users'))
@@ -152,17 +154,9 @@ export class ConversationRepository {
       }
     }
 
-    if (fetchUuids && row.company_id) {
-      const { data: companyData } = await this.supabase
-        .from(this.getTableName('companies'))
-        .select('uuid')
-        .eq('id', row.company_id)
-        .single();
-      
-      if (companyData) {
-        organizationId = companyData.uuid;
-      }
-    }
+    // NOTE: We do NOT fetch company UUID for organizationId
+    // organizationId must remain as the integer ID for internal operations
+    // (knowledge base search, filtering, etc.)
 
     return {
       id: row.uuid,
