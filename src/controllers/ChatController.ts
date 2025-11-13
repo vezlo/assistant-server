@@ -238,8 +238,8 @@ export class ChatController {
           
           const searchResults = await aiService.knowledgeBaseService.search(userMessageContent, {
             limit: 5,
-            threshold: 0.5, // Balanced precision/recall (0.5 is industry standard)
-            type: 'semantic', // Modern RAG best practice: semantic-only for better context
+            threshold: 0.25, // Optimized for code/technical content
+            type: 'hybrid', // Hybrid search (semantic + keyword) for best results
             company_id: companyId
           });
 
@@ -250,7 +250,7 @@ export class ChatController {
             searchResults.forEach((result: any) => {
               knowledgeResults += `- ${result.title}: ${result.content}\n`;
             });
-            logger.info('✅ Knowledge context prepared');
+            logger.info('✅ Knowledge context prepared:', knowledgeResults.substring(0, 200));
           } else {
             // Set to empty string to indicate search was done but no results found
             knowledgeResults = '';

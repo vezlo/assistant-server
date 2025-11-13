@@ -310,8 +310,8 @@ export class KnowledgeController {
       // Perform knowledge base search
       const searchResults = await this.knowledgeBase.search(query, {
         limit: 5,
-        threshold: 0.5, // Balanced precision/recall (0.5 is industry standard)
-        type: 'semantic', // Modern RAG best practice: semantic-only for better context
+        threshold: 0.25, // Optimized for code/technical content
+        type: 'hybrid', // Hybrid search (semantic + keyword) for best results
         company_id: companyId
       });
 

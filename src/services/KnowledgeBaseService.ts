@@ -99,26 +99,21 @@ export class KnowledgeBaseService {
         updated_at: new Date().toISOString()
       };
 
-      // Generate embedding for content-based items
-      if (item.content && (item.type === 'document' || item.type === 'file')) {
-        console.log('Attempting to generate embedding for content:', item.content.substring(0, 100) + '...');
-        const embedding = await this.generateEmbedding(item.content);
-        if (embedding) {
-          console.log('Embedding generated successfully, length:', embedding.length);
-          insertData.embedding = embedding;
-          insertData.processed_at = new Date().toISOString();
-        } else {
-          console.log('Embedding generation returned null');
-        }
-      }
-
+      // Insert parent document (without embedding)
       const { data, error } = await this.supabase
         .from(this.tableName)
         .insert(insertData)
-        .select('uuid')
+        .select('id, uuid')
         .single();
 
       if (error) throw new Error(`Failed to create knowledge item: ${error.message}`);
+
+      // Create chunks with embeddings for content-based items
+      if (item.content && (item.type === 'document' || item.type === 'file')) {
+        console.log('Creating chunks for content...');
+        await this.createChunksForDocument(data.id, item.content, item.title);
+      }
+
       return data.uuid;
 
     } catch (error) {
@@ -317,9 +312,9 @@ export class KnowledgeBaseService {
   async search(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
     try {
       const limit = options.limit || 5;
-      // Balanced precision/recall (0.5 is industry standard)
-      const threshold = options.threshold || 0.5;
-      const type = options.type || 'semantic'; // Modern RAG best practice: semantic-first
+      // Lower threshold for code/technical content (0.25 recommended for hybrid)
+      const threshold = options.threshold || 0.25;
+      const type = options.type || 'hybrid'; // Hybrid as default for best results
 
       // Reduced logging - only essential info
       logger.info(`🔎 Search: type=${type}, threshold=${threshold}, limit=${limit}, companyId=${options.company_id ?? 'all'}`);
@@ -329,17 +324,40 @@ export class KnowledgeBaseService {
       } else if (type === 'keyword') {
         return await this.keywordSearch(query, limit, options.company_id);
       } else {
-        // Hybrid search - combine both approaches
-        const semanticResults = await this.semanticSearch(query, Math.ceil(limit / 2), threshold, options.company_id);
-        const keywordResults = await this.keywordSearch(query, Math.ceil(limit / 2), options.company_id);
+        // Hybrid search - run both in PARALLEL for speed
+        const [semanticResults, keywordResults] = await Promise.all([
+          this.semanticSearch(query, limit, threshold, options.company_id),
+          this.keywordSearch(query, limit, options.company_id)
+        ]);
         
-        // Merge and deduplicate results
-        const combined = [...semanticResults, ...keywordResults];
-        const unique = combined.filter((item, index, self) => 
-          index === self.findIndex(t => t.id === item.id)
-        );
+        // Merge with intelligent scoring (keyword prioritized for exact matches)
+        const combined = [
+          ...semanticResults.map(r => ({ ...r, source: 'semantic' })),
+          ...keywordResults.map(r => ({ ...r, source: 'keyword', score: 0.85 })) // Boost keyword matches
+        ];
         
-        logger.info(`📊 Hybrid: ${semanticResults.length} semantic + ${keywordResults.length} keyword = ${unique.length} total`);
+        // Deduplicate and combine scores
+        const scoreMap = new Map<string, { item: any; maxScore: number; sources: string[] }>();
+        combined.forEach(item => {
+          const existing = scoreMap.get(item.id);
+          if (existing) {
+            existing.maxScore = Math.max(existing.maxScore, item.score);
+            existing.sources.push((item as any).source);
+          } else {
+            scoreMap.set(item.id, { 
+              item: { ...item }, 
+              maxScore: item.score,
+              sources: [(item as any).source]
+            });
+          }
+        });
+        
+        // Convert back to array and sort by max score
+        const unique = Array.from(scoreMap.values())
+          .map(({ item, maxScore }) => ({ ...item, score: maxScore }))
+          .sort((a, b) => b.score - a.score);
+        
+        logger.info(`📊 Hybrid: ${semanticResults.length} semantic + ${keywordResults.length} keyword = ${unique.length} unique`);
         
         return unique.slice(0, limit);
       }
@@ -358,12 +376,9 @@ export class KnowledgeBaseService {
         return [];
       }
 
-      // Use optimized RPC function for vector search
-      // This uses pgvector's <=> operator directly in the database for efficient
-      // nearest-neighbor search, avoiding the need to fetch all records and calculate
-      // similarity in Node.js
-      const { data, error } = await this.supabase.rpc('match_vezlo_knowledge', {
-        query_embedding: queryEmbedding,
+      // Use optimized RPC function for chunk-based vector search
+      const { data, error } = await this.supabase.rpc('match_vezlo_knowledge_chunks', {
+        query_embedding: JSON.stringify(queryEmbedding),
         match_threshold: threshold,
         match_count: limit,
         filter_company_id: companyId !== undefined ? companyId : null
@@ -375,21 +390,21 @@ export class KnowledgeBaseService {
       }
 
       if (!data || data.length === 0) {
-        logger.warn(`⚠️  No items found in DB for companyId=${companyId ?? 'all'}`);
+        logger.warn(`⚠️  No chunks found in DB for companyId=${companyId ?? 'all'}`);
         return [];
       }
 
-      logger.info(`📦 RPC returned ${data.length} items`);
+      logger.info(`📦 RPC returned ${data.length} chunks`);
 
-      // Transform RPC results to SearchResult format
+      // Transform chunk results to SearchResult format
       const results: SearchResult[] = data.map((item: any) => ({
-        id: item.uuid,
-        title: item.title,
-        description: item.description,
-        content: item.content,
-        type: item.type,
+        id: item.document_uuid,
+        title: item.document_title,
+        description: item.document_description,
+        content: item.chunk_text,
+        type: item.document_type,
         score: item.similarity,
-        metadata: item.metadata
+        metadata: item.document_metadata
       }));
 
       // Log results summary
@@ -443,41 +458,64 @@ export class KnowledgeBaseService {
 
   private async keywordSearch(query: string, limit: number, companyId?: number): Promise<SearchResult[]> {
     try {
-      let dbQuery = this.supabase
-        .from(this.tableName)
+      logger.info(`🔎 Keyword search: query="${query.substring(0, 50)}...", limit=${limit}`);
+
+      // Use textSearch with GIN index (faster than ilike, works with Supabase client)
+      // The GIN index on chunk_text makes this O(log n) instead of O(n)
+      const dbQuery = this.supabase
+        .from('vezlo_knowledge_chunks')
         .select(`
           uuid,
-          title,
-          description,
-          content,
-          type,
-          metadata
+          chunk_text,
+          document_id,
+          vezlo_knowledge_items!inner(
+            uuid,
+            title,
+            description,
+            type,
+            metadata,
+            company_id
+          )
         `)
-        .textSearch('title,description,content', query, {
+        .textSearch('chunk_text', query, {
           type: 'websearch',
           config: 'english'
-        })
-        .limit(limit);
+        });
 
       if (companyId) {
-        dbQuery = dbQuery.eq('company_id', companyId);
+        dbQuery.eq('vezlo_knowledge_items.company_id', companyId);
       }
+
+      dbQuery.limit(limit);
 
       const { data, error } = await dbQuery;
 
       if (error) throw new Error(`Keyword search failed: ${error.message}`);
 
-      return data.map(item => ({
-        id: item.uuid,
-        title: item.title,
-        description: item.description,
-        content: item.content,
-        type: item.type,
-        score: 0.8, // Default score for keyword matches
-        metadata: item.metadata
+      if (!data || data.length === 0) {
+        logger.warn(`⚠️ No keyword matches found for companyId=${companyId}`);
+        return [];
+      }
+
+      logger.info(`📦 Keyword search returned ${data.length} chunks`);
+
+      // Map results to SearchResult format
+      const results: SearchResult[] = data.map((row: any) => ({
+        id: row.vezlo_knowledge_items.uuid,
+        title: row.vezlo_knowledge_items.title,
+        description: row.vezlo_knowledge_items.description,
+        content: row.chunk_text,
+        type: row.vezlo_knowledge_items.type,
+        score: 0.7, // Fixed score for keyword matches (can enhance with ts_rank via RPC if needed)
+        metadata: row.vezlo_knowledge_items.metadata
       }));
 
+      logger.info(`✅ Found ${results.length} keyword results`);
+      
+      return results;
+
     } catch (error) {
+      logger.error('Keyword search error:', error);
       return [];
     }
   }
@@ -505,10 +543,10 @@ export class KnowledgeBaseService {
             'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({
-            model: 'text-embedding-ada-002',
-            input: text.substring(0, 8000) // Limit text length to avoid token limits
-          }),
+        body: JSON.stringify({
+          model: 'text-embedding-3-small',
+          input: text.substring(0, 8000) // Limit text length to avoid token limits
+        }),
           signal: controller.signal
         });
 
@@ -546,5 +584,91 @@ export class KnowledgeBaseService {
     }
     
     return null;
+  }
+
+  private async createChunksForDocument(documentId: number, content: string, documentTitle?: string): Promise<void> {
+    const chunkSize = parseInt(process.env.CHUNK_SIZE || '1000');
+    const chunkOverlap = parseInt(process.env.CHUNK_OVERLAP || '200');
+    const chunks = this.splitIntoChunks(content, chunkSize, chunkOverlap);
+    const processedAt = new Date().toISOString();
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      
+      // Generate embedding from raw text (metadata enhancement reduced similarity)
+      const embedding = await this.generateEmbedding(chunk.text);
+      
+      if (embedding) {
+        await this.supabase.rpc('insert_knowledge_chunk', {
+          p_document_id: documentId,
+          p_chunk_text: chunk.text, // Store original text
+          p_chunk_index: i,
+          p_start_char: chunk.startChar,
+          p_end_char: chunk.endChar,
+          p_token_count: Math.ceil(chunk.text.length / 4),
+          p_embedding: JSON.stringify(embedding),
+          p_processed_at: processedAt
+        });
+      }
+    }
+  }
+
+  private enhanceChunkText(text: string, documentTitle?: string, chunkIndex?: number, totalChunks?: number): string {
+    // Add contextual metadata to improve semantic search
+    let enhanced = text;
+    
+    // Add document context
+    if (documentTitle) {
+      enhanced = `Document: ${documentTitle}\n\n${enhanced}`;
+    }
+    
+    // Add chunk position context
+    if (chunkIndex !== undefined && totalChunks !== undefined) {
+      enhanced = `[Part ${chunkIndex + 1} of ${totalChunks}]\n${enhanced}`;
+    }
+    
+    // Enhance structured content (requirements.txt, package.json, etc.)
+    if (documentTitle?.match(/requirements\.txt|package\.json|dependencies/i)) {
+      enhanced = this.enhanceStructuredContent(enhanced);
+    }
+    
+    return enhanced;
+  }
+
+  private enhanceStructuredContent(text: string): string {
+    // Transform dependency lists into natural language for better semantic search
+    let enhanced = text;
+    
+    // Convert Python requirements format: package==version
+    const pythonDeps = text.match(/^(\w+(-\w+)*)==([\d.]+)/gm);
+    if (pythonDeps && pythonDeps.length > 0) {
+      const naturalText = pythonDeps.map(dep => {
+        const [pkg, version] = dep.split('==');
+        return `${pkg} version ${version}`;
+      }).join(', ');
+      enhanced = `Python package dependencies and versions:\n${naturalText}\n\nOriginal format:\n${text}`;
+    }
+    
+    return enhanced;
+  }
+
+  private splitIntoChunks(text: string, chunkSize: number, overlap: number): Array<{text: string; startChar: number; endChar: number}> {
+    const chunks: Array<{text: string; startChar: number; endChar: number}> = [];
+    let startChar = 0;
+
+    while (startChar < text.length) {
+      const endChar = Math.min(startChar + chunkSize, text.length);
+      const chunkText = text.substring(startChar, endChar);
+      
+      chunks.push({
+        text: chunkText,
+        startChar: startChar,
+        endChar: endChar
+      });
+
+      startChar += chunkSize - overlap;
+    }
+
+    return chunks;
   }
 }

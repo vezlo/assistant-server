@@ -52,6 +52,63 @@ export async function up(knex: Knex): Promise<void> {
     WHERE embedding IS NOT NULL
   `);
 
+  // GIN index for full-text keyword search (optimized for large datasets)
+  await knex.schema.raw(`
+    CREATE INDEX IF NOT EXISTS idx_vezlo_chunks_chunk_text_gin 
+    ON vezlo_knowledge_chunks USING gin (to_tsvector('english', chunk_text))
+  `);
+
+  // ============================================================================
+  // CREATE INSERT RPC FUNCTION FOR PROPER VECTOR HANDLING
+  // ============================================================================
+  // Supabase client doesn't handle vector type insertion properly via regular insert
+  // This RPC function ensures embeddings are stored as proper vector type
+  
+  await knex.raw(`
+    CREATE OR REPLACE FUNCTION insert_knowledge_chunk(
+      p_document_id bigint,
+      p_chunk_text text,
+      p_chunk_index int,
+      p_start_char int,
+      p_end_char int,
+      p_token_count int,
+      p_embedding text,
+      p_processed_at timestamptz
+    )
+    RETURNS bigint
+    LANGUAGE plpgsql
+    AS $$
+    DECLARE
+      new_id bigint;
+    BEGIN
+      INSERT INTO vezlo_knowledge_chunks (
+        document_id,
+        chunk_text,
+        chunk_index,
+        start_char,
+        end_char,
+        token_count,
+        embedding,
+        processed_at,
+        metadata
+      ) VALUES (
+        p_document_id,
+        p_chunk_text,
+        p_chunk_index,
+        p_start_char,
+        p_end_char,
+        p_token_count,
+        p_embedding::vector(1536),
+        p_processed_at,
+        '{}'::jsonb
+      )
+      RETURNING id INTO new_id;
+      
+      RETURN new_id;
+    END;
+    $$;
+  `);
+
   // ============================================================================
   // DROP OLD RPC FUNCTION AND CREATE NEW CHUNK-BASED RPC FUNCTION
   // ============================================================================
@@ -69,7 +126,7 @@ export async function up(knex: Knex): Promise<void> {
 
   await knex.raw(`
     CREATE OR REPLACE FUNCTION match_vezlo_knowledge_chunks(
-      query_embedding vector(1536),
+      query_embedding text,
       match_threshold float DEFAULT 0.5,
       match_count int DEFAULT 10,
       filter_company_id bigint DEFAULT NULL
@@ -112,13 +169,75 @@ export async function up(knex: Knex): Promise<void> {
         ki.metadata AS document_metadata,
         c.metadata AS chunk_metadata,
         ki.company_id,
-        1 - (c.embedding <=> query_embedding) AS similarity
+        1 - (c.embedding <=> query_embedding::vector(1536)) AS similarity
       FROM vezlo_knowledge_chunks c
       INNER JOIN vezlo_knowledge_items ki ON c.document_id = ki.id
       WHERE c.embedding IS NOT NULL
         AND (filter_company_id IS NULL OR ki.company_id = filter_company_id)
-        AND (1 - (c.embedding <=> query_embedding)) >= match_threshold
-      ORDER BY c.embedding <=> query_embedding
+        AND (1 - (c.embedding <=> query_embedding::vector(1536))) >= match_threshold
+      ORDER BY c.embedding <=> query_embedding::vector(1536)
+      LIMIT match_count;
+    END;
+    $$;
+  `);
+
+  // ============================================================================
+  // CREATE KEYWORD SEARCH RPC FUNCTION
+  // ============================================================================
+  // This function performs full-text search on chunks using PostgreSQL's
+  // built-in text search capabilities with ts_rank for relevance scoring.
+  // Uses the GIN index for fast keyword matching at scale.
+
+  await knex.raw(`
+    CREATE OR REPLACE FUNCTION match_vezlo_knowledge_chunks_keyword(
+      search_query text,
+      match_count int DEFAULT 10,
+      filter_company_id bigint DEFAULT NULL
+    )
+    RETURNS TABLE (
+      chunk_id bigint,
+      chunk_uuid uuid,
+      document_id bigint,
+      document_uuid uuid,
+      chunk_text text,
+      chunk_index int,
+      start_char int,
+      end_char int,
+      token_count int,
+      document_title text,
+      document_description text,
+      document_type text,
+      document_metadata jsonb,
+      chunk_metadata jsonb,
+      company_id bigint,
+      rank float
+    )
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+      RETURN QUERY
+      SELECT
+        c.id AS chunk_id,
+        c.uuid AS chunk_uuid,
+        c.document_id,
+        ki.uuid AS document_uuid,
+        c.chunk_text,
+        c.chunk_index,
+        c.start_char,
+        c.end_char,
+        c.token_count,
+        ki.title AS document_title,
+        ki.description AS document_description,
+        ki.type AS document_type,
+        ki.metadata AS document_metadata,
+        c.metadata AS chunk_metadata,
+        ki.company_id,
+        ts_rank(to_tsvector('english', c.chunk_text), websearch_to_tsquery('english', search_query)) AS rank
+      FROM vezlo_knowledge_chunks c
+      INNER JOIN vezlo_knowledge_items ki ON c.document_id = ki.id
+      WHERE to_tsvector('english', c.chunk_text) @@ websearch_to_tsquery('english', search_query)
+        AND (filter_company_id IS NULL OR ki.company_id = filter_company_id)
+      ORDER BY rank DESC
       LIMIT match_count;
     END;
     $$;
@@ -126,10 +245,13 @@ export async function up(knex: Knex): Promise<void> {
 }
 
 export async function down(knex: Knex): Promise<void> {
-  // Drop the new RPC function
+  // Drop the new RPC functions
+  await knex.raw('DROP FUNCTION IF EXISTS match_vezlo_knowledge_chunks_keyword');
   await knex.raw('DROP FUNCTION IF EXISTS match_vezlo_knowledge_chunks');
+  await knex.raw('DROP FUNCTION IF EXISTS insert_knowledge_chunk');
 
   // Drop indexes first
+  await knex.schema.raw('DROP INDEX IF EXISTS idx_vezlo_chunks_chunk_text_gin');
   await knex.schema.raw('DROP INDEX IF EXISTS idx_vezlo_chunks_embedding');
   await knex.schema.raw('DROP INDEX IF EXISTS idx_vezlo_chunks_chunk_index');
   await knex.schema.raw('DROP INDEX IF EXISTS idx_vezlo_chunks_document_id');
