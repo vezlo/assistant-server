@@ -59,6 +59,9 @@
     "socket.io": "^4.7.4",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.0",
+    "tree-sitter": "^0.21.1",
+    "tree-sitter-javascript": "^0.25.0",
+    "tree-sitter-python": "^0.25.0",
     "tslib": "^2.8.1",
     "uuid": "^9.0.1",
     "winston": "^3.11.0"

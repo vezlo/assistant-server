@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import logger from '../config/logger';
+import { CodeAnalysisService } from './CodeAnalysisService';
 
 interface KnowledgeBaseConfig {
   supabase: SupabaseClient;
@@ -41,10 +42,12 @@ interface SearchResult {
 export class KnowledgeBaseService {
   private supabase: SupabaseClient;
   private tableName: string;
+  private codeAnalyzer: CodeAnalysisService;
 
   constructor(config: KnowledgeBaseConfig) {
     this.supabase = config.supabase;
     this.tableName = config.tableName || 'vezlo_knowledge_items';
+    this.codeAnalyzer = new CodeAnalysisService();
   }
 
   async createItem(item: {
@@ -312,8 +315,8 @@ export class KnowledgeBaseService {
   async search(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
     try {
       const limit = options.limit || 5;
-      // Lower threshold for code/technical content (0.25 recommended for hybrid)
-      const threshold = options.threshold || 0.25;
+      // Lower threshold for code/technical content (0.20 for OpenAI embedding variance)
+      const threshold = options.threshold || 0.20;
       const type = options.type || 'hybrid'; // Hybrid as default for best results
 
       // Reduced logging - only essential info
@@ -325,8 +328,10 @@ export class KnowledgeBaseService {
         return await this.keywordSearch(query, limit, options.company_id);
       } else {
         // Hybrid search - run both in PARALLEL for speed
+        // Fetch MORE chunks from semantic (10) to catch adjacent chunks for better context
+        const semanticLimit = Math.max(limit, 10); // Ensure at least 10 chunks for code context
         const [semanticResults, keywordResults] = await Promise.all([
-          this.semanticSearch(query, limit, threshold, options.company_id),
+          this.semanticSearch(query, semanticLimit, threshold, options.company_id),
           this.keywordSearch(query, limit, options.company_id)
         ]);
         
@@ -377,12 +382,22 @@ export class KnowledgeBaseService {
       }
 
       // Use optimized RPC function for chunk-based vector search
-      const { data, error } = await this.supabase.rpc('match_vezlo_knowledge_chunks', {
+      const rpcParams = {
         query_embedding: JSON.stringify(queryEmbedding),
         match_threshold: threshold,
         match_count: limit,
         filter_company_id: companyId !== undefined ? companyId : null
+      };
+      
+      console.log(`🔍 DEBUG: Calling RPC with params:`, {
+        embedding_length: queryEmbedding.length,
+        embedding_sample: queryEmbedding.slice(0, 3),
+        threshold,
+        limit,
+        company_id: rpcParams.filter_company_id
       });
+      
+      const { data, error } = await this.supabase.rpc('match_vezlo_knowledge_chunks', rpcParams);
 
       if (error) {
         logger.error('RPC vector search error:', error);
@@ -592,25 +607,67 @@ export class KnowledgeBaseService {
     const chunks = this.splitIntoChunks(content, chunkSize, chunkOverlap);
     const processedAt = new Date().toISOString();
 
+    // Step 1: Analyze code if it's a code file
+    const codeAnalysis = documentTitle ? this.codeAnalyzer.analyzeCode(content, documentTitle) : null;
+    
+    if (codeAnalysis && codeAnalysis.functions.size > 0) {
+      console.log(`📊 Analyzed ${documentTitle}: found ${codeAnalysis.functions.size} functions`);
+    }
+
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
       
-      // Generate embedding from raw text (metadata enhancement reduced similarity)
-      const embedding = await this.generateEmbedding(chunk.text);
+      // Step 2: Check if this chunk contains any functions
+      let textForEmbedding = chunk.text;
+      
+      if (codeAnalysis && codeAnalysis.functions.size > 0) {
+        const chunkStartLine = this.getLineNumber(content, chunk.startChar);
+        const chunkEndLine = this.getLineNumber(content, chunk.endChar);
+        
+        const functionsInChunk = this.codeAnalyzer.getFunctionsInRange(
+          codeAnalysis.functions,
+          chunkStartLine,
+          chunkEndLine
+        );
+        
+        // Step 3: If chunk has functions, prepend metadata
+        if (functionsInChunk.length > 0) {
+          const metadata = functionsInChunk
+            .map(func => this.codeAnalyzer.generateFunctionMetadata(func))
+            .join('\n');
+          
+          textForEmbedding = metadata + chunk.text;
+          console.log(`📝 Enhanced chunk ${i} with metadata for ${functionsInChunk.length} function(s)`);
+        }
+      }
+      
+      // Step 4: Generate embedding from enhanced text
+      const embedding = await this.generateEmbedding(textForEmbedding);
       
       if (embedding) {
-        await this.supabase.rpc('insert_knowledge_chunk', {
+        const { data, error } = await this.supabase.rpc('insert_knowledge_chunk', {
           p_document_id: documentId,
-          p_chunk_text: chunk.text, // Store original text
+          p_chunk_text: chunk.text, // Store ORIGINAL text (not enhanced)
           p_chunk_index: i,
           p_start_char: chunk.startChar,
           p_end_char: chunk.endChar,
           p_token_count: Math.ceil(chunk.text.length / 4),
-          p_embedding: JSON.stringify(embedding),
+          p_embedding: JSON.stringify(embedding), // Embedding from ENHANCED text
           p_processed_at: processedAt
         });
+        
+        if (error) {
+          console.error(`❌ Failed to insert chunk ${i}:`, error);
+          throw new Error(`Failed to insert chunk: ${error.message}`);
+        }
+        
+        console.log(`✓ Inserted chunk ${i} (ID: ${data})`);
       }
     }
+  }
+  
+  private getLineNumber(content: string, charIndex: number): number {
+    return content.substring(0, charIndex).split('\n').length;
   }
 
   private enhanceChunkText(text: string, documentTitle?: string, chunkIndex?: number, totalChunks?: number): string {

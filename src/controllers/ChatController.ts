@@ -238,7 +238,7 @@ export class ChatController {
           
           const searchResults = await aiService.knowledgeBaseService.search(userMessageContent, {
             limit: 5,
-            threshold: 0.25, // Optimized for code/technical content
+            threshold: 0.20, // Lower threshold for OpenAI embedding variance
             type: 'hybrid', // Hybrid search (semantic + keyword) for best results
             company_id: companyId
           });
