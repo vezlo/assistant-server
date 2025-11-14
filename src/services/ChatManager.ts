@@ -169,8 +169,9 @@ export class ChatManager {
       return [];
     }
 
-    const historyLimit = typeof limit === 'number' && limit > 0 ? limit : this.historyLength;
-    if (historyLimit <= 0) {
+    // limit represents number of PAIRS (user+assistant), not raw messages
+    const pairLimit = typeof limit === 'number' && limit > 0 ? limit : this.historyLength;
+    if (pairLimit <= 0) {
       return [];
     }
 
@@ -189,38 +190,80 @@ export class ChatManager {
       }
     }
 
-    let totalMessages = conversation?.messageCount ?? 0;
-    if (includePending) {
-      totalMessages += 1;
-    }
-
-    let offset = 0;
-    if (totalMessages > historyLimit) {
-      offset = totalMessages - historyLimit;
-    }
+    // Fetch more messages than needed to ensure we can form pairs
+    // Each pair = 2 messages, so fetch at least (pairLimit * 2) + buffer
+    const fetchLimit = Math.max(pairLimit * 3, 50); // Fetch 3x to handle edge cases
 
     let messages: ChatMessage[] = [];
 
     try {
-      const storedMessages = await this.config.storage.getMessages(threadId, historyLimit, offset);
-
-      if (storedMessages.length < historyLimit && offset > 0) {
-        // Fallback: fetch from start and take latest N in case message counts are out of sync
-        const retryMessages = await this.config.storage.getMessages(threadId, historyLimit);
-        messages = retryMessages.slice(-historyLimit).map(msg => ({
-          role: msg.role,
-          content: msg.content,
-          createdAt: msg.createdAt,
-          toolResults: msg.toolResults
-        }));
-      } else {
-        messages = storedMessages.slice(-historyLimit).map(msg => ({
-          role: msg.role,
-          content: msg.content,
-          createdAt: msg.createdAt,
-          toolResults: msg.toolResults
-        }));
+      // Fetch recent messages (ordered by created_at ascending - oldest first)
+      const storedMessages = await this.config.storage.getMessages(threadId, fetchLimit, 0);
+      
+      if (storedMessages.length === 0) {
+        return [];
       }
+
+      // Group messages into pairs: user message + its latest assistant response
+      // Map: userMessageId -> { user: message, assistant: latest assistant message }
+      const pairMap = new Map<string, { user: StoredChatMessage; assistant?: StoredChatMessage }>();
+      
+      // First pass: collect all user messages
+      for (const msg of storedMessages) {
+        if (msg.role === 'user') {
+          if (!pairMap.has(msg.id!)) {
+            pairMap.set(msg.id!, { user: msg });
+          }
+        }
+      }
+      
+      // Second pass: find latest assistant response for each user message
+      // Process in reverse chronological order to get the latest assistant response first
+      for (let i = storedMessages.length - 1; i >= 0; i--) {
+        const msg = storedMessages[i];
+        if (msg.role === 'assistant' && msg.parentMessageId) {
+          const pair = pairMap.get(msg.parentMessageId);
+          if (pair) {
+            // Only set if not already set (processing in reverse ensures latest is set first)
+            if (!pair.assistant) {
+              pair.assistant = msg;
+            } else {
+              // If already set, compare timestamps to ensure we have the latest
+              if (msg.createdAt > pair.assistant.createdAt) {
+                pair.assistant = msg;
+              }
+            }
+          }
+        }
+      }
+      
+      // Convert map to array of pairs, filter out incomplete pairs (unless includePending)
+      const pairs: ChatMessage[] = [];
+      const pairArray = Array.from(pairMap.values())
+        .filter(pair => pair.assistant || includePending)
+        .slice(-pairLimit); // Take last N pairs
+      
+      // Build message array in chronological order (user, then assistant)
+      for (const pair of pairArray) {
+        pairs.push({
+          role: pair.user.role,
+          content: pair.user.content,
+          createdAt: pair.user.createdAt,
+          toolResults: pair.user.toolResults
+        });
+        
+        if (pair.assistant) {
+          pairs.push({
+            role: pair.assistant.role,
+            content: pair.assistant.content,
+            createdAt: pair.assistant.createdAt,
+            toolResults: pair.assistant.toolResults
+          });
+        }
+      }
+      
+      messages = pairs;
+      
     } catch (error) {
       console.error('Failed to get recent messages:', error);
       return [];

@@ -81,6 +81,8 @@ export class IntentService {
 
   private buildClassifierPrompt(input: ClassificationInput): OpenAI.Chat.Completions.ChatCompletionMessageParam[] {
     const history = input.conversationHistory || [];
+    // Use all provided history (already limited by CHAT_HISTORY_LENGTH in ChatController)
+    // No need to trim further - respect the configured limit
 
     const systemMessage: OpenAI.Chat.Completions.ChatCompletionMessageParam = {
       role: 'system',
@@ -114,12 +116,13 @@ Important:
 
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [systemMessage];
 
+    // Use all provided history (already limited by CHAT_HISTORY_LENGTH)
     if (history.length > 0) {
-      const trimmedHistory = history.slice(-6).map<OpenAI.Chat.Completions.ChatCompletionMessageParam>(msg => ({
+      const historyMessages = history.map<OpenAI.Chat.Completions.ChatCompletionMessageParam>(msg => ({
         role: msg.role,
         content: msg.content
       }));
-      messages.push(...trimmedHistory);
+      messages.push(...historyMessages);
     }
 
     messages.push({

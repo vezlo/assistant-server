@@ -324,13 +324,11 @@ CREATE POLICY "Service role can access all knowledge items" ON vezlo_knowledge_i
 --   FOR ALL USING (company_id = auth.jwt() ->> 'company_id');
 
 -- ============================================================================
--- RPC FUNCTION FOR OPTIMIZED VECTOR SEARCH
+-- RPC FUNCTIONS FOR OPTIMIZED VECTOR SEARCH
 -- ============================================================================
 
--- This function uses pgvector's <=> operator for efficient nearest-neighbor search
--- directly in the database, avoiding the need to fetch all records and calculate
--- similarity in Node.js. This provides significant performance improvements,
--- especially for large knowledge bases.
+-- OLD RPC FUNCTION (from migration 004) - kept for reference
+-- This function searches the parent knowledge_items table
 CREATE OR REPLACE FUNCTION match_vezlo_knowledge(
   query_embedding vector(1536),
   match_threshold float DEFAULT 0.5,
@@ -369,6 +367,115 @@ BEGIN
     AND (filter_company_id IS NULL OR ki.company_id = filter_company_id)
     AND (1 - (ki.embedding <=> query_embedding)) >= match_threshold
   ORDER BY ki.embedding <=> query_embedding
+  LIMIT match_count;
+END;
+$$;
+
+-- ============================================================================
+-- NEW RPC FUNCTIONS FOR CHUNK-BASED SEARCH (from migration 005)
+-- ============================================================================
+
+-- INSERT RPC FUNCTION FOR PROPER VECTOR HANDLING
+-- Supabase client doesn't handle vector type insertion properly via regular insert
+-- This RPC function ensures embeddings are stored as proper vector type
+CREATE OR REPLACE FUNCTION insert_knowledge_chunk(
+  p_document_id bigint,
+  p_chunk_text text,
+  p_chunk_index int,
+  p_start_char int,
+  p_end_char int,
+  p_token_count int,
+  p_embedding text,
+  p_processed_at timestamptz
+)
+RETURNS bigint
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  new_id bigint;
+BEGIN
+  INSERT INTO vezlo_knowledge_chunks (
+    document_id,
+    chunk_text,
+    chunk_index,
+    start_char,
+    end_char,
+    token_count,
+    embedding,
+    processed_at,
+    metadata
+  ) VALUES (
+    p_document_id,
+    p_chunk_text,
+    p_chunk_index,
+    p_start_char,
+    p_end_char,
+    p_token_count,
+    p_embedding::vector(1536),
+    p_processed_at,
+    '{}'::jsonb
+  )
+  RETURNING id INTO new_id;
+  
+  RETURN new_id;
+END;
+$$;
+
+-- CHUNK-BASED VECTOR SEARCH RPC FUNCTION
+-- This function searches through chunks and joins back to parent documents
+-- for metadata. It uses pgvector's <=> operator for efficient nearest-neighbor
+-- search directly in the database.
+CREATE OR REPLACE FUNCTION match_vezlo_knowledge_chunks(
+  query_embedding text,
+  match_threshold float DEFAULT 0.5,
+  match_count int DEFAULT 10,
+  filter_company_id bigint DEFAULT NULL
+)
+RETURNS TABLE (
+  chunk_id bigint,
+  chunk_uuid uuid,
+  document_id bigint,
+  document_uuid uuid,
+  chunk_text text,
+  chunk_index int,
+  start_char int,
+  end_char int,
+  token_count int,
+  document_title text,
+  document_description text,
+  document_type text,
+  document_metadata jsonb,
+  chunk_metadata jsonb,
+  company_id bigint,
+  similarity float
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    c.id AS chunk_id,
+    c.uuid AS chunk_uuid,
+    c.document_id,
+    ki.uuid AS document_uuid,
+    c.chunk_text,
+    c.chunk_index,
+    c.start_char,
+    c.end_char,
+    c.token_count,
+    ki.title AS document_title,
+    ki.description AS document_description,
+    ki.type AS document_type,
+    ki.metadata AS document_metadata,
+    c.metadata AS chunk_metadata,
+    ki.company_id,
+    1 - (c.embedding <=> query_embedding::vector(1536)) AS similarity
+  FROM vezlo_knowledge_chunks c
+  INNER JOIN vezlo_knowledge_items ki ON c.document_id = ki.id
+  WHERE c.embedding IS NOT NULL
+    AND (filter_company_id IS NULL OR ki.company_id = filter_company_id)
+    AND (1 - (c.embedding <=> query_embedding::vector(1536))) >= match_threshold
+  ORDER BY c.embedding <=> query_embedding::vector(1536)
   LIMIT match_count;
 END;
 $$;

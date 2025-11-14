@@ -328,8 +328,8 @@ export class KnowledgeBaseService {
         return await this.keywordSearch(query, limit, options.company_id);
       } else {
         // Hybrid search - run both in PARALLEL for speed
-        // Fetch MORE chunks from semantic (10) to catch adjacent chunks for better context
-        const semanticLimit = Math.max(limit, 10); // Ensure at least 10 chunks for code context
+        // Fetch MORE chunks from semantic (7) to catch adjacent chunks for better context
+        const semanticLimit = Math.max(limit, 7); // Ensure at least 7 chunks for code context
         const [semanticResults, keywordResults] = await Promise.all([
           this.semanticSearch(query, semanticLimit, threshold, options.company_id),
           this.keywordSearch(query, limit, options.company_id)

@@ -1,6 +1,7 @@
 const Parser = require('tree-sitter');
 const Python = require('tree-sitter-python');
 const JavaScript = require('tree-sitter-javascript');
+const TypeScript = require('tree-sitter-typescript');
 
 interface FunctionInfo {
   name: string;
@@ -40,12 +41,28 @@ export class CodeAnalysisService {
           return { functions: new Map(), language };
         }
         this.parser.setLanguage(Python);
-      } else if (language === 'javascript' || language === 'typescript') {
+      } else if (language === 'javascript') {
         if (!JavaScript || typeof JavaScript !== 'object') {
           console.warn(`JavaScript language binding not available for ${filename}`);
           return { functions: new Map(), language };
         }
         this.parser.setLanguage(JavaScript);
+      } else if (language === 'typescript') {
+        // tree-sitter-typescript has separate parsers for TS and TSX
+        const ext = filename.toLowerCase().split('.').pop();
+        if (ext === 'tsx') {
+          if (!TypeScript || !TypeScript.tsx || typeof TypeScript.tsx !== 'object') {
+            console.warn(`TypeScript TSX language binding not available for ${filename}`);
+            return { functions: new Map(), language };
+          }
+          this.parser.setLanguage(TypeScript.tsx);
+        } else {
+          if (!TypeScript || !TypeScript.typescript || typeof TypeScript.typescript !== 'object') {
+            console.warn(`TypeScript language binding not available for ${filename}`);
+            return { functions: new Map(), language };
+          }
+          this.parser.setLanguage(TypeScript.typescript);
+        }
       }
 
       const tree = this.parser.parse(content);
@@ -238,10 +255,29 @@ export class CodeAnalysisService {
       
       if (child.type === 'identifier') {
         params.push(content.substring(child.startIndex, child.endIndex));
-      } else if (child.type === 'required_parameter' || child.type === 'optional_parameter') {
-        const nameNode = child.childForFieldName('pattern');
+      } else if (child.type === 'required_parameter' || child.type === 'optional_parameter' || 
+                 child.type === 'parameter') {
+        // Try pattern field first (for destructured params)
+        const nameNode = child.childForFieldName('pattern') || child.childForFieldName('name');
         if (nameNode) {
-          params.push(content.substring(nameNode.startIndex, nameNode.endIndex));
+          const paramText = content.substring(nameNode.startIndex, nameNode.endIndex);
+          // For TypeScript, include type annotation if present
+          const typeNode = child.childForFieldName('type');
+          if (typeNode) {
+            const typeText = content.substring(typeNode.startIndex, typeNode.endIndex).trim();
+            // Remove leading colon if present (tree-sitter sometimes includes it)
+            const cleanType = typeText.replace(/^:\s*/, '');
+            params.push(`${paramText}: ${cleanType}`);
+          } else {
+            params.push(paramText);
+          }
+        } else {
+          // Fallback: try to get identifier directly
+          const identifier = child.childForFieldName('identifier') || 
+                            (child.childCount > 0 ? child.child(0) : null);
+          if (identifier && identifier.type === 'identifier') {
+            params.push(content.substring(identifier.startIndex, identifier.endIndex));
+          }
         }
       }
     }

@@ -181,72 +181,10 @@ export async function up(knex: Knex): Promise<void> {
     $$;
   `);
 
-  // ============================================================================
-  // CREATE KEYWORD SEARCH RPC FUNCTION
-  // ============================================================================
-  // This function performs full-text search on chunks using PostgreSQL's
-  // built-in text search capabilities with ts_rank for relevance scoring.
-  // Uses the GIN index for fast keyword matching at scale.
-
-  await knex.raw(`
-    CREATE OR REPLACE FUNCTION match_vezlo_knowledge_chunks_keyword(
-      search_query text,
-      match_count int DEFAULT 10,
-      filter_company_id bigint DEFAULT NULL
-    )
-    RETURNS TABLE (
-      chunk_id bigint,
-      chunk_uuid uuid,
-      document_id bigint,
-      document_uuid uuid,
-      chunk_text text,
-      chunk_index int,
-      start_char int,
-      end_char int,
-      token_count int,
-      document_title text,
-      document_description text,
-      document_type text,
-      document_metadata jsonb,
-      chunk_metadata jsonb,
-      company_id bigint,
-      rank float
-    )
-    LANGUAGE plpgsql
-    AS $$
-    BEGIN
-      RETURN QUERY
-      SELECT
-        c.id AS chunk_id,
-        c.uuid AS chunk_uuid,
-        c.document_id,
-        ki.uuid AS document_uuid,
-        c.chunk_text,
-        c.chunk_index,
-        c.start_char,
-        c.end_char,
-        c.token_count,
-        ki.title AS document_title,
-        ki.description AS document_description,
-        ki.type AS document_type,
-        ki.metadata AS document_metadata,
-        c.metadata AS chunk_metadata,
-        ki.company_id,
-        ts_rank(to_tsvector('english', c.chunk_text), websearch_to_tsquery('english', search_query)) AS rank
-      FROM vezlo_knowledge_chunks c
-      INNER JOIN vezlo_knowledge_items ki ON c.document_id = ki.id
-      WHERE to_tsvector('english', c.chunk_text) @@ websearch_to_tsquery('english', search_query)
-        AND (filter_company_id IS NULL OR ki.company_id = filter_company_id)
-      ORDER BY rank DESC
-      LIMIT match_count;
-    END;
-    $$;
-  `);
 }
 
 export async function down(knex: Knex): Promise<void> {
   // Drop the new RPC functions
-  await knex.raw('DROP FUNCTION IF EXISTS match_vezlo_knowledge_chunks_keyword');
   await knex.raw('DROP FUNCTION IF EXISTS match_vezlo_knowledge_chunks');
   await knex.raw('DROP FUNCTION IF EXISTS insert_knowledge_chunk');
 
