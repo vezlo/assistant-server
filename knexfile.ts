@@ -57,7 +57,8 @@ const config: { [key: string]: Knex.Config } = {
       // Use absolute path based on __dirname (knexfile.js location in dist/)
       directory: path.join(__dirname, 'src/migrations'),
       tableName: 'knex_migrations',
-      extension: 'js'
+      extension: 'ts',
+      loadExtensions: ['.ts']
     },
     seeds: {
       directory: path.join(__dirname, 'src/seeds'),
