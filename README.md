@@ -189,15 +189,23 @@ npx vezlo-server
 npm run build && npm start
 ```
 
-### Docker Deployment
+### Docker Setup
 
-```bash
-# Start with Docker Compose (uses .env from project root)
-docker-compose up -d
-
-# View logs
-docker-compose logs -f vezlo-server
-```
+1. Copy the environment template and fill in your Supabase/OpenAI values:
+   ```bash
+   cp env.example .env
+   # edit .env with your credentials before continuing
+   ```
+2. Build and start the stack:
+   ```bash
+   docker-compose build
+   docker-compose up -d
+   ```
+   The entrypoint runs migrations, seeds the default org/admin, and generates an API key automatically.
+3. View container logs:
+   ```bash
+   docker-compose logs -f vezlo-server
+   ```
 
 ## ☁️ Vercel Deployment
 
@@ -700,4 +708,4 @@ This project is dual-licensed:
 
 ---
 
-**Status**: ✅ Production Ready | **Version**: 2.1.0 | **Node.js**: 20+ | **TypeScript**: 5+
+**Status**: ✅ Production Ready | **Version**: 2.2.1 | **Node.js**: 20+ | **TypeScript**: 5+

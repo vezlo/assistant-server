@@ -30,12 +30,11 @@ export class SetupService {
     companyName: string;
   }) {
     const result = await this.getOrCreateDefaultData(options);
-    
-    // Throw error if already exists (maintains CLI behavior)
+
     if (result.alreadyExists) {
-      throw new Error('Default company and admin user already exist');
+      logger.info('Default data already exists; returning existing records');
     }
-    
+
     return result;
   }
 
@@ -53,56 +52,10 @@ export class SetupService {
     try {
       logger.info('Checking for existing default company and admin user...');
 
-      // Check if default company already exists
-      const { data: existingCompany } = await this.supabase
-        .from('vezlo_companies')
-        .select('*')
-        .eq('domain', 'default')
-        .single();
-
-      if (existingCompany) {
-        // Get the admin user and profile
-        const { data: profile } = await this.supabase
-          .from('vezlo_user_company_profiles')
-          .select('*, vezlo_users(*)')
-          .eq('company_id', existingCompany.id)
-          .eq('role', 'admin')
-          .single();
-
-        if (profile && profile.vezlo_users) {
-          const user = profile.vezlo_users;
-          logger.info('Default data already exists, returning existing data');
-          
-          return {
-            success: true,
-            alreadyExists: true,
-            company: {
-              id: existingCompany.uuid,
-              name: existingCompany.name,
-              domain: existingCompany.domain
-            },
-            user: {
-              id: user.uuid,
-              email: user.email,
-              name: user.name
-            },
-            profile: {
-              id: profile.uuid,
-              role: profile.role
-            }
-          };
-        }
-      }
-
-      // Check if admin user already exists
-      const { data: existingUser } = await this.supabase
-        .from('vezlo_users')
-        .select('id')
-        .eq('email', adminEmail)
-        .single();
-
-      if (existingUser) {
-        throw new Error(`User with email ${adminEmail} already exists`);
+      const existingData = await this.fetchExistingDefaultData();
+      if (existingData) {
+        logger.info('Default data already exists, returning existing data');
+        return existingData;
       }
 
       logger.info('Creating default company and admin user...');
@@ -118,6 +71,13 @@ export class SetupService {
         .single();
 
       if (companyError) {
+        if (this.isUniqueViolation(companyError)) {
+          const fallbackData = await this.fetchExistingDefaultData();
+          if (fallbackData) {
+            logger.info('Company already exists, reusing existing data');
+            return fallbackData;
+          }
+        }
         throw new Error(`Failed to create company: ${companyError.message}`);
       }
 
@@ -138,6 +98,13 @@ export class SetupService {
         .single();
 
       if (userError) {
+        if (this.isUniqueViolation(userError)) {
+          const fallbackData = await this.fetchExistingDefaultData();
+          if (fallbackData) {
+            logger.info('Admin user already exists, reusing existing data');
+            return fallbackData;
+          }
+        }
         throw new Error(`Failed to create user: ${userError.message}`);
       }
 
@@ -187,6 +154,54 @@ export class SetupService {
       logger.error('Setup failed:', error);
       throw error;
     }
+  }
+
+  private isUniqueViolation(error: { code?: string; message?: string }) {
+    return error?.code === '23505' || error?.message?.toLowerCase().includes('duplicate key');
+  }
+
+  private async fetchExistingDefaultData() {
+    const { data: existingCompany } = await this.supabase
+      .from('vezlo_companies')
+      .select('*')
+      .eq('domain', 'default')
+      .single();
+
+    if (!existingCompany) {
+      return null;
+    }
+
+    const { data: profile } = await this.supabase
+      .from('vezlo_user_company_profiles')
+      .select('*, vezlo_users(*)')
+      .eq('company_id', existingCompany.id)
+      .eq('role', 'admin')
+      .single();
+
+    if (!profile || !profile.vezlo_users) {
+      return null;
+    }
+
+    const user = profile.vezlo_users;
+
+    return {
+      success: true,
+      alreadyExists: true,
+      company: {
+        id: existingCompany.uuid,
+        name: existingCompany.name,
+        domain: existingCompany.domain
+      },
+      user: {
+        id: user.uuid,
+        email: user.email,
+        name: user.name
+      },
+      profile: {
+        id: profile.uuid,
+        role: profile.role
+      }
+    };
   }
 
   /**

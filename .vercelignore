@@ -59,4 +59,5 @@ pnpm-lock.yaml
 
 # Exclude the frontend application (separate project)
 assistant-chat/
+src-to-kb/
 

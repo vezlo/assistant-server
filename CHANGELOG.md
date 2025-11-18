@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] - 2025-11-17
+
+### Added
+- Docker entrypoint now runs default seeding and API key generation after migrations for parity with npm setup.
+- README “Docker Setup” instructions detailing `.env` preparation and build/up workflow.
+
+### Changed
+- Setup wizard now runs migrations via Knex directly, ensuring global installs use the provided credentials without relying on `.env`.
+- Generated `.env` now includes `JWT_SECRET`, `DEFAULT_ADMIN_*`, and `CHAT_HISTORY_LENGTH`.
+- Packaged CLI detects compiled JS migrations automatically; Docker no longer installs `ts-node`.
+
+### Fixed
+- Global npm installs no longer fail due to missing migrations or ts-node dependency requirements.
+- CLI migrations, seeding, and API key generation now behave consistently across local, Docker, and npm environments.
+
 ## [2.1.0] - 2025-11-11
 
 ### Added

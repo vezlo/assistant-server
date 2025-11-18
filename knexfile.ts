@@ -1,6 +1,7 @@
 import type { Knex } from 'knex';
 import dotenv from 'dotenv';
 const path = require('path');
+const fs = require('fs');
 
 // Load environment variables
 dotenv.config();
@@ -12,6 +13,36 @@ try {
   // ts-node not available, that's okay - migrations will use compiled JS
 }
 
+
+const projectRoot = fs.existsSync(path.join(__dirname, 'package.json'))
+  ? __dirname
+  : path.join(__dirname, '..');
+
+const srcMigrationsPath = path.join(projectRoot, 'src', 'migrations');
+const distMigrationsPath = path.join(projectRoot, 'dist', 'src', 'migrations');
+const tsMigrationProbe = path.join(srcMigrationsPath, '001_initial_schema.ts');
+const jsMigrationProbe = path.join(distMigrationsPath, '001_initial_schema.js');
+
+const hasTsMigrations = fs.existsSync(tsMigrationProbe);
+const hasJsMigrations = fs.existsSync(jsMigrationProbe);
+
+const resolvedMigrationsDirectory = hasTsMigrations
+  ? srcMigrationsPath
+  : hasJsMigrations
+    ? distMigrationsPath
+    : srcMigrationsPath;
+
+const migrationExtension = hasTsMigrations ? 'ts' : (hasJsMigrations ? 'js' : 'ts');
+const migrationLoadExtensions = migrationExtension === 'ts' ? ['.ts'] : ['.js'];
+
+const supabaseMigrationsDirectory = fs.existsSync(distMigrationsPath)
+  ? distMigrationsPath
+  : resolvedMigrationsDirectory;
+const supabaseMigrationExtension = fs.existsSync(distMigrationsPath) ? 'js' : migrationExtension;
+const supabaseSeedsDirectory = fs.existsSync(path.join(projectRoot, 'dist', 'src', 'seeds'))
+  ? path.join(projectRoot, 'dist', 'src', 'seeds')
+  : path.join(projectRoot, 'src', 'seeds');
+const supabaseSeedsAreJs = supabaseSeedsDirectory.endsWith(path.join('dist', 'src', 'seeds'));
 
 const config: { [key: string]: Knex.Config } = {
   development: {
@@ -29,9 +60,10 @@ const config: { [key: string]: Knex.Config } = {
       max: 10
     },
     migrations: {
-      directory: './src/migrations',
+      directory: resolvedMigrationsDirectory,
       tableName: 'knex_migrations',
-      extension: 'ts'
+      extension: migrationExtension,
+      loadExtensions: migrationLoadExtensions
     },
     seeds: {
       directory: './src/seeds',
@@ -54,11 +86,11 @@ const config: { [key: string]: Knex.Config } = {
       max: 20
     },
     migrations: {
-      // Use absolute path based on __dirname (knexfile.js location in dist/)
-      directory: path.join(__dirname, 'src/migrations'),
+      // Use resolved path (prefers TS during development, JS in packaged builds)
+      directory: resolvedMigrationsDirectory,
       tableName: 'knex_migrations',
-      extension: 'ts',
-      loadExtensions: ['.ts']
+      extension: migrationExtension,
+      loadExtensions: migrationLoadExtensions
     },
     seeds: {
       directory: path.join(__dirname, 'src/seeds'),
@@ -66,7 +98,7 @@ const config: { [key: string]: Knex.Config } = {
     }
   },
 
-  // For Supabase connection using connection string
+  // Supabase (used by Vercel) always targets compiled JS migrations
   supabase: {
     client: 'postgresql',
     connection: process.env.SUPABASE_DB_URL || process.env.DATABASE_URL || {
@@ -82,20 +114,14 @@ const config: { [key: string]: Knex.Config } = {
       max: 10
     },
     migrations: {
-      // In production (Vercel), knexfile.js is in dist/, so use absolute path
-      // In development, use relative path
-      directory: process.env.NODE_ENV === 'production' 
-        ? path.join(__dirname, 'src/migrations')
-        : path.join(process.cwd(), 'src/migrations'),
+      directory: supabaseMigrationsDirectory,
       tableName: 'knex_migrations',
-      extension: process.env.NODE_ENV === 'production' ? 'js' : 'ts',
-      loadExtensions: process.env.NODE_ENV === 'production' ? ['.js'] : ['.ts']
+      extension: supabaseMigrationExtension,
+      loadExtensions: supabaseMigrationExtension === 'ts' ? ['.ts'] : ['.js']
     },
     seeds: {
-      directory: process.env.NODE_ENV === 'production' 
-        ? path.join(__dirname, 'src/seeds')
-        : path.join(process.cwd(), 'src/seeds'),
-      extension: process.env.NODE_ENV === 'production' ? 'js' : 'ts'
+      directory: supabaseSeedsDirectory,
+      extension: supabaseSeedsAreJs ? 'js' : 'ts'
     }
   }
 };

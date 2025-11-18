@@ -1,6 +1,6 @@
 {
   "name": "@vezlo/assistant-server",
-  "version": "2.1.0",
+  "version": "2.2.1",
   "description": "Production-ready AI Assistant Server with vector search, conversation management, and real-time communication",
   "main": "dist/server.js",
   "types": "dist/server.d.ts",
@@ -73,6 +73,7 @@
     "@types/swagger-ui-express": "^4.1.6",
     "@types/uuid": "^9.0.6",
     "@vercel/node": "^3.0.0",
+    "ts-node": "^10.9.2",
     "typescript": "^5.2.2"
   },
   "engines": {
