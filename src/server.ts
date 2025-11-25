@@ -18,13 +18,14 @@ import { ApiKeyController } from './controllers/ApiKeyController';
 import { runMigrations, getMigrationStatus } from './config/knex';
 import { createClient } from '@supabase/supabase-js';
 import { initializeCoreServices } from './bootstrap/initializeServices';
+import { RealtimePublisher } from './services/RealtimePublisher';
 
 // Initialize Supabase client - use SERVICE_KEY for server-side operations
 // Service key bypasses RLS and is required for API key authentication
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY!
-);
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY!;
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+const realtimePublisher = new RealtimePublisher(supabaseUrl, supabaseServiceKey);
 
 // Initialize Express app
 const app = express();
@@ -91,6 +92,7 @@ async function initializeServices() {
     chatController = controllers.chatController;
     knowledgeController = controllers.knowledgeController;
     authController = controllers.authController;
+    authController.setRealtimePublisher(realtimePublisher);
     apiKeyController = controllers.apiKeyController;
 
     logger.info('All services initialized successfully');

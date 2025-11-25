@@ -1,12 +1,19 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { PasswordUtils } from '../middleware/auth';
 import logger from '../config/logger';
+import type { RealtimePublisher } from '../services/RealtimePublisher';
 
 export class AuthController {
   private supabase: SupabaseClient;
+  private realtimePublisher?: RealtimePublisher;
 
-  constructor(supabase: SupabaseClient) {
+  constructor(supabase: SupabaseClient, realtimePublisher?: RealtimePublisher) {
     this.supabase = supabase;
+    this.realtimePublisher = realtimePublisher;
+  }
+
+  setRealtimePublisher(publisher: RealtimePublisher) {
+    this.realtimePublisher = publisher;
   }
 
   // Login endpoint
@@ -100,7 +107,7 @@ export class AuthController {
         return;
       }
 
-      res.json({
+      const responsePayload = {
         user: {
           uuid: req.user.uuid,
           email: req.user.email,
@@ -112,7 +119,9 @@ export class AuthController {
           company_name: req.profile.companyName,
           role: req.profile.role
         }
-      });
+      };
+
+      res.json(responsePayload);
 
     } catch (error) {
       logger.error('Get me error:', error);

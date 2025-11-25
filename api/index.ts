@@ -28,6 +28,7 @@ import { ChatController } from '../dist/src/controllers/ChatController';
 import { KnowledgeController } from '../dist/src/controllers/KnowledgeController';
 import { AuthController } from '../dist/src/controllers/AuthController';
 import { ApiKeyController } from '../dist/src/controllers/ApiKeyController';
+import { RealtimePublisher } from '../dist/src/services/RealtimePublisher';
 
 // Load environment variables
 config();
@@ -75,6 +76,7 @@ let knowledgeController: KnowledgeController;
 let authController: AuthController;
 let apiKeyController: ApiKeyController;
 let supabase: any;
+let realtimePublisher: RealtimePublisher | null = null;
 
 async function initializeServices() {
   if (servicesInitialized) return;
@@ -86,6 +88,9 @@ async function initializeServices() {
     supabase = initializeSupabase();
     logger.info('Supabase client initialized');
 
+    const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY!;
+    realtimePublisher = new RealtimePublisher(process.env.SUPABASE_URL!, supabaseKey);
+
     const { controllers } = initializeCoreServices({
       supabase,
       tablePrefix: 'vezlo',
@@ -95,6 +100,7 @@ async function initializeServices() {
     chatController = controllers.chatController;
     knowledgeController = controllers.knowledgeController;
     authController = controllers.authController;
+    authController.setRealtimePublisher(realtimePublisher);
     apiKeyController = controllers.apiKeyController;
 
     servicesInitialized = true;
