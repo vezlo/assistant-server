@@ -279,6 +279,15 @@ export class ChatController {
       
       const conversation = await this.storage.getConversation(conversationId);
 
+      // Check if conversation has been joined by an agent
+      if (conversation?.joinedAt) {
+        res.status(400).json({ 
+          error: 'Conversation is being handled by an agent',
+          message: 'AI responses are disabled when an agent has joined the conversation'
+        });
+        return;
+      }
+
       // Run intent classification to decide handling strategy
       const intentResult = await this.classifyIntent(userMessageContent, messages);
       const handled = await this.handleIntentResult(intentResult, userMessage, conversationId, conversation, res);
@@ -572,6 +581,100 @@ export class ChatController {
       logger.error('Join conversation error:', error);
       res.status(500).json({
         error: 'Failed to join conversation',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  // Send agent message
+  async sendAgentMessage(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user || !req.profile) {
+        res.status(401).json({ error: 'Authentication required' });
+        return;
+      }
+
+      const { uuid } = req.params;
+      const { content } = req.body;
+
+      if (!content) {
+        res.status(400).json({ error: 'content is required' });
+        return;
+      }
+
+      const conversation = await this.storage.getConversation(uuid);
+
+      if (!conversation) {
+        res.status(404).json({ error: 'Conversation not found' });
+        return;
+      }
+
+      if (conversation.organizationId !== req.profile.companyId) {
+        res.status(404).json({ error: 'Conversation not found' });
+        return;
+      }
+
+      const agentMessage = await this.storage.saveMessage({
+        conversationId: uuid,
+        threadId: conversation.threadId,
+        role: 'agent',
+        content,
+        createdAt: new Date(),
+        authorId: parseInt(req.user.id)
+      });
+
+      const newMessageCount = conversation.messageCount + 1;
+      const timestamp = new Date();
+      await this.storage.updateConversation(uuid, {
+        messageCount: newMessageCount,
+        lastMessageAt: timestamp
+      });
+
+      if (this.realtimePublisher) {
+        try {
+          const { data: company } = await this.supabase
+            .from('vezlo_companies')
+            .select('uuid')
+            .eq('id', conversation.organizationId)
+            .single();
+
+          if (company?.uuid) {
+            await this.realtimePublisher.publish(
+              `company:${company.uuid}:conversations`,
+              'message:created',
+              {
+                conversation_uuid: uuid,
+                message: {
+                  uuid: agentMessage.id,
+                  content: agentMessage.content,
+                  type: agentMessage.role,
+                  author_id: agentMessage.authorId,
+                  created_at: agentMessage.createdAt.toISOString()
+                },
+                conversation_update: {
+                  message_count: newMessageCount,
+                  last_message_at: timestamp.toISOString()
+                }
+              }
+            );
+          }
+        } catch (error) {
+          logger.error('[ChatController] Failed to publish agent message update:', error);
+        }
+      }
+
+      res.json({
+        uuid: agentMessage.id,
+        content: agentMessage.content,
+        type: agentMessage.role,
+        author_id: agentMessage.authorId,
+        created_at: agentMessage.createdAt.toISOString()
+      });
+
+    } catch (error) {
+      logger.error('Send agent message error:', error);
+      res.status(500).json({
+        error: 'Failed to send agent message',
         message: error instanceof Error ? error.message : 'Unknown error'
       });
     }

@@ -501,6 +501,49 @@ app.post('/api/conversations/:uuid/join', authenticateUser(supabase), (req, res)
 
 /**
  * @swagger
+ * /api/conversations/{uuid}/messages/agent:
+ *   post:
+ *     summary: Send agent message
+ *     description: Agent sends a message in a conversation and publishes realtime update
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: uuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Conversation UUID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - content
+ *             properties:
+ *               content:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Agent message sent successfully
+ *       400:
+ *         description: Invalid request
+ *       401:
+ *         description: Not authenticated
+ *       404:
+ *         description: Conversation not found
+ *       500:
+ *         description: Internal server error
+ */
+app.post('/api/conversations/:uuid/messages/agent', authenticateUser(supabase), (req, res) =>
+  (chatController as any).sendAgentMessage(req as AuthenticatedRequest, res)
+);
+
+/**
+ * @swagger
  * /api/conversations/{uuid}:
  *   delete:
  *     summary: Delete conversation

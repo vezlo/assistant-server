@@ -247,6 +247,9 @@ app.get('/api/conversations/:uuid/messages', requireServices, requireAuth, (req,
 app.post('/api/conversations/:uuid/join', requireServices, requireAuth, (req, res) =>
   (chatController as any).joinConversation(req, res)
 );
+app.post('/api/conversations/:uuid/messages/agent', requireServices, requireAuth, (req, res) =>
+  (chatController as any).sendAgentMessage(req, res)
+);
 app.delete('/api/conversations/:uuid', requireServices, requireAuth, (req, res) => chatController.deleteConversation(req, res));
 
 // Message APIs (Public - No Authentication Required for Widget)
