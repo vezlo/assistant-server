@@ -120,14 +120,16 @@ export class ChatController {
       // Generate a unique thread ID for the conversation
       const threadId = `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
+      const now = new Date();
       const conversation = await this.storage.saveConversation({
         threadId,
         userId,
         organizationId: companyId,
         title: title || 'New Conversation',
         messageCount: 0,
-        createdAt: new Date(),
-        updatedAt: new Date()
+        createdAt: now,
+        updatedAt: now,
+        lastMessageAt: now
       });
 
       // Publish realtime update for new conversation
@@ -139,9 +141,9 @@ export class ChatController {
             {
               conversation: {
                 uuid: conversation.id,
-                status: 'active',
+                status: 'open',
                 message_count: conversation.messageCount,
-                last_message_at: conversation.lastMessageAt?.toISOString() || null,
+                last_message_at: conversation.lastMessageAt?.toISOString() || now.toISOString(),
                 created_at: conversation.createdAt.toISOString()
               }
             }
@@ -230,7 +232,8 @@ export class ChatController {
                 },
                 conversation_update: {
                   message_count: newMessageCount,
-                  last_message_at: timestamp.toISOString()
+                  last_message_at: timestamp.toISOString(),
+                  status: conversation.joinedAt ? 'in_progress' : 'open'
                 }
               }
             );
@@ -509,6 +512,11 @@ export class ChatController {
         return;
       }
 
+      if (conversation.closedAt) {
+        res.status(400).json({ error: 'Conversation is closed' });
+        return;
+      }
+
       const joinedAt = new Date();
       
       await this.storage.updateConversation(uuid, {
@@ -586,6 +594,106 @@ export class ChatController {
     }
   }
 
+  // Close conversation
+  async closeConversation(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user || !req.profile) {
+        res.status(401).json({ error: 'Authentication required' });
+        return;
+      }
+
+      const { uuid } = req.params;
+      const conversation = await this.storage.getConversation(uuid);
+
+      if (!conversation) {
+        res.status(404).json({ error: 'Conversation not found' });
+        return;
+      }
+
+      if (conversation.organizationId !== req.profile.companyId) {
+        res.status(404).json({ error: 'Conversation not found' });
+        return;
+      }
+
+      if (conversation.closedAt) {
+        res.status(400).json({ error: 'Conversation is already closed' });
+        return;
+      }
+
+      const closedAt = new Date();
+
+      const systemMessage = await this.storage.saveMessage({
+        conversationId: uuid,
+        threadId: conversation.threadId,
+        role: 'system',
+        content: `${req.user.name} has closed the conversation.`,
+        createdAt: closedAt,
+        authorId: parseInt(req.user.id, 10)
+      });
+
+      const newMessageCount = conversation.messageCount + 1;
+      await this.storage.updateConversation(uuid, {
+        messageCount: newMessageCount,
+        lastMessageAt: closedAt,
+        closedAt
+      });
+
+      if (this.realtimePublisher) {
+        try {
+          const { data: company } = await this.supabase
+            .from('vezlo_companies')
+            .select('uuid')
+            .eq('id', conversation.organizationId)
+            .single();
+
+          if (company?.uuid) {
+            await this.realtimePublisher.publish(
+              `company:${company.uuid}:conversations`,
+              'message:created',
+              {
+                conversation_uuid: uuid,
+                message: {
+                  uuid: systemMessage.id,
+                  content: systemMessage.content,
+                  type: systemMessage.role,
+                  author_id: systemMessage.authorId,
+                  created_at: systemMessage.createdAt.toISOString()
+                },
+                conversation_update: {
+                  message_count: newMessageCount,
+                  last_message_at: closedAt.toISOString(),
+                  joined_at: conversation.joinedAt?.toISOString() || null,
+                  closed_at: closedAt.toISOString(),
+                  status: 'closed'
+                }
+              }
+            );
+          }
+        } catch (error) {
+          logger.error('[ChatController] Failed to publish close conversation update:', error);
+        }
+      }
+
+      res.json({
+        success: true,
+        message: {
+          uuid: systemMessage.id,
+          content: systemMessage.content,
+          type: systemMessage.role,
+          author_id: systemMessage.authorId,
+          created_at: systemMessage.createdAt.toISOString()
+        }
+      });
+
+    } catch (error) {
+      logger.error('Close conversation error:', error);
+      res.status(500).json({
+        error: 'Failed to close conversation',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
   // Send agent message
   async sendAgentMessage(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
@@ -611,6 +719,11 @@ export class ChatController {
 
       if (conversation.organizationId !== req.profile.companyId) {
         res.status(404).json({ error: 'Conversation not found' });
+        return;
+      }
+
+      if (conversation.closedAt) {
+        res.status(400).json({ error: 'Conversation is closed' });
         return;
       }
 

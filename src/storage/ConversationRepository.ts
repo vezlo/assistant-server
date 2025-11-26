@@ -50,7 +50,8 @@ export class ConversationRepository {
           creator_id: creatorId,
           message_count: conversation.messageCount || 0,
           created_at: conversation.createdAt?.toISOString() || new Date().toISOString(),
-          updated_at: conversation.updatedAt?.toISOString() || new Date().toISOString()
+          updated_at: conversation.updatedAt?.toISOString() || new Date().toISOString(),
+          last_message_at: conversation.lastMessageAt?.toISOString() || conversation.createdAt?.toISOString() || new Date().toISOString()
         })
         .select()
         .single();

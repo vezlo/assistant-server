@@ -544,6 +544,38 @@ app.post('/api/conversations/:uuid/messages/agent', authenticateUser(supabase), 
 
 /**
  * @swagger
+ * /api/conversations/{uuid}/close:
+ *   post:
+ *     summary: Close conversation
+ *     description: Close a conversation, record a system message, and publish realtime update
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: uuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Conversation UUID
+ *     responses:
+ *       200:
+ *         description: Conversation closed successfully
+ *       400:
+ *         description: Invalid request
+ *       401:
+ *         description: Not authenticated
+ *       404:
+ *         description: Conversation not found
+ *       500:
+ *         description: Internal server error
+ */
+app.post('/api/conversations/:uuid/close', authenticateUser(supabase), (req, res) =>
+  (chatController as any).closeConversation(req as AuthenticatedRequest, res)
+);
+
+/**
+ * @swagger
  * /api/conversations/{uuid}:
  *   delete:
  *     summary: Delete conversation

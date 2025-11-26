@@ -54,7 +54,8 @@ export class SupabaseStorage implements ChatStorage {
           title: conversation.title,
           message_count: conversation.messageCount,
           created_at: conversation.createdAt.toISOString(),
-          updated_at: conversation.updatedAt.toISOString()
+          updated_at: conversation.updatedAt.toISOString(),
+          last_message_at: conversation.lastMessageAt?.toISOString() || conversation.createdAt.toISOString()
         })
         .select()
         .single();
