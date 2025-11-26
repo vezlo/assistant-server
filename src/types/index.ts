@@ -79,6 +79,7 @@ export interface ChatConversation {
   respondedAt?: Date;
   closedAt?: Date;
   lastMessageAt?: Date;
+  status?: string;
 }
 
 export interface StoredChatMessage {
@@ -90,7 +91,7 @@ export interface StoredChatMessage {
   parentMessageId?: string;
   toolCalls?: any;
   toolResults?: DatabaseSearchResult[];
-  authorId?: string;
+  authorId?: number;
   createdAt: Date;
   updatedAt?: Date;
 }

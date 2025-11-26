@@ -479,6 +479,104 @@ export class ChatController {
     }
   }
 
+  // Join conversation
+  async joinConversation(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user || !req.profile) {
+        res.status(401).json({ error: 'Authentication required' });
+        return;
+      }
+
+      const { uuid } = req.params;
+      const conversation = await this.storage.getConversation(uuid);
+
+      if (!conversation) {
+        res.status(404).json({ error: 'Conversation not found' });
+        return;
+      }
+
+      if (conversation.organizationId !== req.profile.companyId) {
+        res.status(404).json({ error: 'Conversation not found' });
+        return;
+      }
+
+      const joinedAt = new Date();
+      
+      await this.storage.updateConversation(uuid, {
+        joinedAt,
+        status: 'in_progress'
+      });
+
+      const systemMessage = await this.storage.saveMessage({
+        conversationId: uuid,
+        threadId: conversation.threadId,
+        role: 'system',
+        content: `${req.user.name} has joined the conversation.`,
+        createdAt: joinedAt,
+        authorId: parseInt(req.user.id)
+      });
+
+      const newMessageCount = conversation.messageCount + 1;
+      await this.storage.updateConversation(uuid, {
+        messageCount: newMessageCount,
+        lastMessageAt: joinedAt
+      });
+
+      if (this.realtimePublisher) {
+        try {
+          const { data: company } = await this.supabase
+            .from('vezlo_companies')
+            .select('uuid')
+            .eq('id', conversation.organizationId)
+            .single();
+
+          if (company?.uuid) {
+            await this.realtimePublisher.publish(
+              `company:${company.uuid}:conversations`,
+              'message:created',
+              {
+                conversation_uuid: uuid,
+                message: {
+                  uuid: systemMessage.id,
+                  content: systemMessage.content,
+                  type: systemMessage.role,
+                  author_id: systemMessage.authorId,
+                  created_at: systemMessage.createdAt.toISOString()
+                },
+                conversation_update: {
+                  message_count: newMessageCount,
+                  last_message_at: joinedAt.toISOString(),
+                  joined_at: joinedAt.toISOString(),
+                  status: 'in_progress'
+                }
+              }
+            );
+          }
+        } catch (error) {
+          logger.error('[ChatController] Failed to publish join conversation update:', error);
+        }
+      }
+
+      res.json({
+        success: true,
+        message: {
+          uuid: systemMessage.id,
+          content: systemMessage.content,
+          type: systemMessage.role,
+          author_id: systemMessage.authorId,
+          created_at: systemMessage.createdAt.toISOString()
+        }
+      });
+
+    } catch (error) {
+      logger.error('Join conversation error:', error);
+      res.status(500).json({
+        error: 'Failed to join conversation',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
   // Get user conversations (renamed from getUserConversations)
   async getUserConversations(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {

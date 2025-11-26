@@ -451,6 +451,56 @@ app.get('/api/conversations/:uuid/messages', authenticateUser(supabase), (req, r
 
 /**
  * @swagger
+ * /api/conversations/{uuid}/join:
+ *   post:
+ *     summary: Join conversation
+ *     description: Agent joins a conversation, sets joined_at timestamp, creates a system message, and publishes realtime update
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: uuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Conversation UUID
+ *     responses:
+ *       200:
+ *         description: Successfully joined conversation
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: object
+ *                   properties:
+ *                     uuid:
+ *                       type: string
+ *                     content:
+ *                       type: string
+ *                     type:
+ *                       type: string
+ *                     author_id:
+ *                       type: integer
+ *                     created_at:
+ *                       type: string
+ *       401:
+ *         description: Not authenticated
+ *       404:
+ *         description: Conversation not found
+ *       500:
+ *         description: Internal server error
+ */
+app.post('/api/conversations/:uuid/join', authenticateUser(supabase), (req, res) =>
+  chatController.joinConversation(req as AuthenticatedRequest, res)
+);
+
+/**
+ * @swagger
  * /api/conversations/{uuid}:
  *   delete:
  *     summary: Delete conversation
