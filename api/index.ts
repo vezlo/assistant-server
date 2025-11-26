@@ -238,7 +238,12 @@ app.get('/api/api-keys/status', requireServices, requireAuth, (req, res) => apiK
 
 // Conversation APIs (Public - No Authentication Required for Widget)
 app.post('/api/conversations', requireServices, (req, res) => chatController.createConversation(req, res));
-app.get('/api/conversations/:uuid', requireServices, (req, res) => chatController.getConversation(req, res));
+app.get('/api/conversations/:uuid', requireServices, requireAuth, (req, res) =>
+  chatController.getConversation(req, res)
+);
+app.get('/api/conversations/:uuid/messages', requireServices, requireAuth, (req, res) =>
+  (chatController as any).getConversationMessages(req, res)
+);
 app.delete('/api/conversations/:uuid', requireServices, requireAuth, (req, res) => chatController.deleteConversation(req, res));
 
 // Message APIs (Public - No Authentication Required for Widget)

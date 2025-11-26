@@ -3,7 +3,9 @@ import {
   ChatStorage,
   ChatConversation,
   StoredChatMessage,
-  Feedback
+  Feedback,
+  ConversationListOptions,
+  ConversationListResult
 } from '../types';
 import { ConversationRepository } from './ConversationRepository';
 import { MessageRepository } from './MessageRepository';
@@ -48,8 +50,12 @@ export class UnifiedStorage implements ChatStorage {
     return this.conversations.deleteConversation(conversationId);
   }
 
-  async getUserConversations(userId: string, organizationId?: string): Promise<ChatConversation[]> {
-    return this.conversations.getUserConversations(userId, organizationId);
+  async getUserConversations(
+    userId: string,
+    organizationId?: string,
+    options?: ConversationListOptions
+  ): Promise<ConversationListResult> {
+    return this.conversations.getUserConversations(userId, organizationId, options);
   }
 
   // ============================================================================
@@ -60,8 +66,13 @@ export class UnifiedStorage implements ChatStorage {
     return this.messages.saveMessage(message);
   }
 
-  async getMessages(conversationId: string, limit = 50, offset = 0): Promise<StoredChatMessage[]> {
-    return this.messages.getMessages(conversationId, limit, offset);
+  async getMessages(
+    conversationId: string,
+    limit = 50,
+    offset = 0,
+    options?: { order?: 'asc' | 'desc' }
+  ): Promise<StoredChatMessage[]> {
+    return this.messages.getMessages(conversationId, limit, offset, options);
   }
 
   async deleteMessage(messageId: string): Promise<boolean> {

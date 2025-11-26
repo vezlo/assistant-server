@@ -30,24 +30,18 @@ export const ConversationSchemas = {
       uuid: { type: 'string', description: 'Conversation UUID' },
       title: { type: 'string', description: 'Conversation title' },
       message_count: { type: 'integer', description: 'Number of messages' },
-      created_at: { type: 'string', format: 'date-time' }
+      status: { type: 'string', description: 'Conversation status (open, in_progress, closed)' },
+      created_at: { type: 'string', format: 'date-time' },
+      updated_at: { type: 'string', format: 'date-time' },
+      joined_at: { type: 'string', format: 'date-time', nullable: true },
+      responded_at: { type: 'string', format: 'date-time', nullable: true },
+      closed_at: { type: 'string', format: 'date-time', nullable: true },
+      last_message_at: { type: 'string', format: 'date-time', nullable: true }
     }
   },
 
   ConversationWithMessages: {
-    type: 'object',
-    properties: {
-      uuid: { type: 'string', description: 'Conversation UUID' },
-      title: { type: 'string', description: 'Conversation title' },
-      user_uuid: { type: 'string', description: 'User UUID' },
-      company_uuid: { type: 'string', description: 'Company UUID' },
-      message_count: { type: 'integer', description: 'Number of messages' },
-      created_at: { type: 'string', format: 'date-time' },
-      messages: {
-        type: 'array',
-        items: { $ref: '#/components/schemas/MessageResponse' }
-      }
-    }
+    deprecated: true
   },
 
   ConversationListResponse: {
@@ -57,9 +51,16 @@ export const ConversationSchemas = {
         type: 'array',
         items: { $ref: '#/components/schemas/ConversationResponse' }
       },
-      total: { type: 'integer', description: 'Total number of conversations' },
-      limit: { type: 'integer', description: 'Conversations per page' },
-      offset: { type: 'integer', description: 'Conversations skipped' }
+      pagination: {
+        type: 'object',
+        properties: {
+          page: { type: 'integer' },
+          page_size: { type: 'integer' },
+          total: { type: 'integer' },
+          total_pages: { type: 'integer' },
+          has_more: { type: 'boolean' }
+        }
+      }
     }
   },
 
@@ -71,7 +72,13 @@ export const ConversationSchemas = {
       user_uuid: { type: 'string', description: 'User UUID' },
       company_uuid: { type: 'string', description: 'Company UUID' },
       message_count: { type: 'integer', description: 'Number of messages' },
-      created_at: { type: 'string', format: 'date-time' }
+      status: { type: 'string', description: 'Conversation status (open, in_progress, closed)' },
+      created_at: { type: 'string', format: 'date-time' },
+      updated_at: { type: 'string', format: 'date-time' },
+      joined_at: { type: 'string', format: 'date-time', nullable: true },
+      responded_at: { type: 'string', format: 'date-time', nullable: true },
+      closed_at: { type: 'string', format: 'date-time', nullable: true },
+      last_message_at: { type: 'string', format: 'date-time', nullable: true }
     }
   },
 
@@ -83,10 +90,33 @@ export const ConversationSchemas = {
       user_uuid: { type: 'string', description: 'User UUID' },
       company_uuid: { type: 'string', description: 'Company UUID' },
       message_count: { type: 'integer', description: 'Number of messages' },
+      status: { type: 'string', description: 'Conversation status (open, in_progress, closed)' },
       created_at: { type: 'string', format: 'date-time' },
+      updated_at: { type: 'string', format: 'date-time' },
+      joined_at: { type: 'string', format: 'date-time', nullable: true },
+      responded_at: { type: 'string', format: 'date-time', nullable: true },
+      closed_at: { type: 'string', format: 'date-time', nullable: true },
+      last_message_at: { type: 'string', format: 'date-time', nullable: true }
+    }
+  },
+
+  ConversationMessagesResponse: {
+    type: 'object',
+    properties: {
+      conversation_uuid: { type: 'string', description: 'Conversation UUID' },
+      order: { type: 'string', enum: ['asc', 'desc'], description: 'Sort order applied' },
       messages: {
         type: 'array',
         items: { $ref: '#/components/schemas/MessageResponse' }
+      },
+      pagination: {
+        type: 'object',
+        properties: {
+          page: { type: 'integer' },
+          page_size: { type: 'integer' },
+          has_more: { type: 'boolean' },
+          next_offset: { type: 'integer', nullable: true }
+        }
       }
     }
   }

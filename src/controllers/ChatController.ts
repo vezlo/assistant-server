@@ -6,6 +6,7 @@ import { AuthenticatedRequest } from '../middleware/auth';
 import logger from '../config/logger';
 import { IntentService, IntentClassificationResult } from '../services/IntentService';
 import { ChatConversation, ChatMessage, StoredChatMessage } from '../types';
+import { RealtimePublisher } from '../services/RealtimePublisher';
 
 export class ChatController {
   private chatManager: ChatManager;
@@ -13,12 +14,13 @@ export class ChatController {
   private supabase: SupabaseClient;
   private chatHistoryLength: number;
   private intentService?: IntentService;
+  private realtimePublisher?: RealtimePublisher;
 
   constructor(
     chatManager: ChatManager,
     storage: UnifiedStorage,
     supabase: SupabaseClient,
-    options: { historyLength?: number; intentService?: IntentService } = {}
+    options: { historyLength?: number; intentService?: IntentService; realtimePublisher?: RealtimePublisher } = {}
   ) {
     this.chatManager = chatManager;
     this.storage = storage;
@@ -26,6 +28,7 @@ export class ChatController {
     const { historyLength } = options;
     this.chatHistoryLength = typeof historyLength === 'number' && historyLength > 0 ? historyLength : 2;
     this.intentService = options.intentService;
+    this.realtimePublisher = options.realtimePublisher;
   }
 
   // Create a new conversation
@@ -127,6 +130,27 @@ export class ChatController {
         updatedAt: new Date()
       });
 
+      // Publish realtime update for new conversation
+      if (this.realtimePublisher && companyUuid) {
+        try {
+          await this.realtimePublisher.publish(
+            `company:${companyUuid}:conversations`,
+            'conversation:created',
+            {
+              conversation: {
+                uuid: conversation.id,
+                status: 'active',
+                message_count: conversation.messageCount,
+                last_message_at: conversation.lastMessageAt?.toISOString() || null,
+                created_at: conversation.createdAt.toISOString()
+              }
+            }
+          );
+        } catch (error) {
+          logger.error('[ChatController] Failed to publish conversation:created event:', error);
+        }
+      }
+
       res.json({
         uuid: conversation.id,
         title: conversation.title,
@@ -173,9 +197,48 @@ export class ChatController {
       });
 
       // Update conversation message count
+      const timestamp = new Date();
+      const newMessageCount = conversation.messageCount + 1;
       await this.storage.updateConversation(uuid, {
-        messageCount: conversation.messageCount + 1
+        messageCount: newMessageCount,
+        lastMessageAt: timestamp
       });
+
+      // Publish realtime update
+      if (this.realtimePublisher && conversation.organizationId) {
+        try {
+          logger.info(`[ChatController] Fetching company UUID for organizationId: ${conversation.organizationId}`);
+          const { data: company } = await this.supabase
+            .from('vezlo_companies')
+            .select('uuid')
+            .eq('id', conversation.organizationId)
+            .single();
+
+          if (company?.uuid) {
+            logger.info(`[ChatController] Publishing user message update for company: ${company.uuid}`);
+            await this.realtimePublisher.publish(
+              `company:${company.uuid}:conversations`,
+              'message:created',
+              {
+                conversation_uuid: uuid,
+                message: {
+                  uuid: userMessage.id,
+                  content: userMessage.content,
+                  type: userMessage.role,
+                  author_id: null,
+                  created_at: userMessage.createdAt.toISOString()
+                },
+                conversation_update: {
+                  message_count: newMessageCount,
+                  last_message_at: timestamp.toISOString()
+                }
+              }
+            );
+          }
+        } catch (error) {
+          logger.error('[ChatController] Failed to publish realtime update:', error);
+        }
+      }
 
       res.json({
         uuid: userMessage.id,
@@ -304,9 +367,14 @@ export class ChatController {
     }
   }
 
-  // Get conversation details with messages
-  async getConversation(req: Request, res: Response): Promise<void> {
+  // Get conversation details
+  async getConversation(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
+      if (!req.profile) {
+        res.status(401).json({ error: 'Authentication required' });
+        return;
+      }
+
       const { uuid } = req.params;
       const conversation = await this.storage.getConversation(uuid);
 
@@ -315,7 +383,17 @@ export class ChatController {
         return;
       }
 
-      const messages = await this.storage.getMessages(uuid, 50);
+      if (conversation.organizationId && conversation.organizationId !== req.profile.companyId) {
+        res.status(404).json({ error: 'Conversation not found' });
+        return;
+      }
+
+      const toIso = (date?: Date) => (date ? date.toISOString() : null);
+      const status = conversation.closedAt
+        ? 'closed'
+        : conversation.joinedAt
+        ? 'in_progress'
+        : 'open';
 
       res.json({
         uuid: conversation.id,
@@ -323,21 +401,79 @@ export class ChatController {
         user_uuid: conversation.userId,
         company_uuid: conversation.organizationId,
         message_count: conversation.messageCount,
-        created_at: conversation.createdAt,
-        messages: messages.map(msg => ({
-          uuid: msg.id,
-          parent_message_uuid: msg.parentMessageId,
-          type: msg.role,
-          content: msg.content,
-          status: 'completed',
-          created_at: msg.createdAt
-        }))
+        created_at: toIso(conversation.createdAt),
+        updated_at: toIso(conversation.updatedAt),
+        joined_at: toIso(conversation.joinedAt),
+        responded_at: toIso(conversation.respondedAt),
+        closed_at: toIso(conversation.closedAt),
+        last_message_at: toIso(conversation.lastMessageAt),
+        status
       });
 
     } catch (error) {
       logger.error('Get conversation error:', error);
       res.status(500).json({
         error: 'Failed to get conversation',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  // Get conversation messages
+  async getConversationMessages(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.profile) {
+        res.status(401).json({ error: 'Authentication required' });
+        return;
+      }
+
+      const { uuid } = req.params;
+      const page = Math.max(1, parseInt((req.query.page as string) || '1', 10) || 1);
+      const pageSizeRaw = parseInt((req.query.page_size as string) || '50', 10);
+      const pageSize = Math.min(200, Math.max(1, isNaN(pageSizeRaw) ? 50 : pageSizeRaw));
+      const offset = (page - 1) * pageSize;
+      const orderParam = ((req.query.order as string) || 'desc').toLowerCase();
+      const order: 'asc' | 'desc' = orderParam === 'asc' ? 'asc' : 'desc';
+
+      const conversation = await this.storage.getConversation(uuid);
+
+      if (!conversation) {
+        res.status(404).json({ error: 'Conversation not found' });
+        return;
+      }
+
+      if (conversation.organizationId && conversation.organizationId !== req.profile.companyId) {
+        res.status(404).json({ error: 'Conversation not found' });
+        return;
+      }
+
+      const messages = await this.storage.getMessages(uuid, pageSize, offset, { order });
+      const hasMore = messages.length === pageSize;
+      const toIso = (date?: Date) => (date ? date.toISOString() : null);
+
+      res.json({
+        conversation_uuid: conversation.id,
+        order,
+        messages: messages.map(msg => ({
+          uuid: msg.id,
+          parent_message_uuid: msg.parentMessageId,
+          type: msg.role,
+          content: msg.content,
+          status: 'completed',
+          created_at: toIso(msg.createdAt),
+          author_id: msg.authorId ?? null
+        })),
+        pagination: {
+          page,
+          page_size: pageSize,
+          has_more: hasMore,
+          next_offset: hasMore ? offset + pageSize : null
+        }
+      });
+    } catch (error) {
+      logger.error('Get conversation messages error:', error);
+      res.status(500).json({
+        error: 'Failed to get conversation messages',
         message: error instanceof Error ? error.message : 'Unknown error'
       });
     }
@@ -351,18 +487,49 @@ export class ChatController {
         return;
       }
 
-      const conversations = await this.storage.getUserConversations(
+      const page = Math.max(1, parseInt((req.query.page as string) || '1', 10) || 1);
+      const pageSizeRaw = parseInt((req.query.page_size as string) || '20', 10);
+      const pageSize = Math.min(100, Math.max(1, isNaN(pageSizeRaw) ? 20 : pageSizeRaw));
+      const offset = (page - 1) * pageSize;
+      const orderParam = (req.query.order_by as string) || 'last_message_at';
+      const orderBy = orderParam === 'created_at' ? 'updated_at' : 'last_message_at';
+
+      const { conversations, total } = await this.storage.getUserConversations(
         req.user!.id,
-        req.profile?.companyId || undefined
+        req.profile.companyId,
+        {
+          limit: pageSize,
+          offset,
+          orderBy: orderBy as 'last_message_at' | 'updated_at'
+        }
       );
+
+      const toIso = (date?: Date) => (date ? date.toISOString() : null);
 
       res.json({
         conversations: conversations.map(conversation => ({
           uuid: conversation.id,
           title: conversation.title,
           message_count: conversation.messageCount,
-          created_at: conversation.createdAt
-        }))
+          created_at: toIso(conversation.createdAt),
+          updated_at: toIso(conversation.updatedAt),
+          joined_at: toIso(conversation.joinedAt),
+          responded_at: toIso(conversation.respondedAt),
+          closed_at: toIso(conversation.closedAt),
+          last_message_at: toIso(conversation.lastMessageAt),
+          status: conversation.closedAt
+            ? 'closed'
+            : conversation.joinedAt
+            ? 'in_progress'
+            : 'open'
+        })),
+        pagination: {
+          page,
+          page_size: pageSize,
+          total,
+          total_pages: Math.max(1, Math.ceil(total / pageSize)),
+          has_more: offset + conversations.length < total
+        }
       });
 
     } catch (error) {
@@ -606,10 +773,58 @@ export class ChatController {
 
     if (options.conversation) {
       const nextCount = (options.conversation.messageCount || 0) + 1;
+      const timestamp = new Date();
       await this.storage.updateConversation(options.conversationId, {
-        messageCount: nextCount
+        messageCount: nextCount,
+        lastMessageAt: timestamp
       });
       options.conversation.messageCount = nextCount;
+      options.conversation.lastMessageAt = timestamp;
+
+      // Publish realtime update
+      if (this.realtimePublisher && options.conversation.organizationId) {
+        try {
+          logger.info(`[ChatController] Fetching company UUID for assistant message, organizationId: ${options.conversation.organizationId}`);
+          const { data: company } = await this.supabase
+            .from('vezlo_companies')
+            .select('uuid')
+            .eq('id', options.conversation.organizationId)
+            .single();
+
+          if (company?.uuid) {
+            logger.info(`[ChatController] Publishing assistant message update for company: ${company.uuid}`);
+            await this.realtimePublisher.publish(
+              `company:${company.uuid}:conversations`,
+              'message:created',
+              {
+                conversation_uuid: options.conversationId,
+                message: {
+                  uuid: assistantMessage.id,
+                  content: assistantMessage.content,
+                  type: assistantMessage.role,
+                  author_id: null,
+                  created_at: assistantMessage.createdAt.toISOString()
+                },
+                conversation_update: {
+                  message_count: nextCount,
+                  last_message_at: timestamp.toISOString()
+                }
+              }
+            );
+          } else {
+            logger.warn(`[ChatController] No company UUID found for organizationId: ${options.conversation.organizationId}`);
+          }
+        } catch (error) {
+          logger.error('[ChatController] Failed to publish realtime update:', error);
+        }
+      } else {
+        if (!this.realtimePublisher) {
+          logger.warn('[ChatController] Realtime publisher not available for assistant message');
+        }
+        if (!options.conversation.organizationId) {
+          logger.warn('[ChatController] No organizationId in conversation for assistant message');
+        }
+      }
     }
 
     return assistantMessage;

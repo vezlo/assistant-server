@@ -106,6 +106,10 @@ CREATE TABLE IF NOT EXISTS vezlo_conversations (
   creator_id BIGINT NOT NULL,
   title TEXT NOT NULL,
   message_count INTEGER DEFAULT 0,
+  joined_at TIMESTAMPTZ,
+  responded_at TIMESTAMPTZ,
+  closed_at TIMESTAMPTZ,
+  last_message_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
   deleted_at TIMESTAMPTZ -- Soft delete
@@ -120,6 +124,7 @@ CREATE TABLE IF NOT EXISTS vezlo_messages (
   content TEXT NOT NULL,
   status TEXT DEFAULT 'completed', -- generating, completed, stopped, failed
   metadata JSONB DEFAULT '{}', -- For tool_calls, tool_results, etc.
+  author_id BIGINT REFERENCES vezlo_users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
@@ -236,6 +241,9 @@ CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_company_id ON vezlo_conversat
 CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_creator_id ON vezlo_conversations(creator_id);
 CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_deleted ON vezlo_conversations(deleted_at) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_updated_at ON vezlo_conversations(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_last_message_at ON vezlo_conversations(last_message_at DESC);
+CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_joined_at ON vezlo_conversations(joined_at);
+CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_closed_at ON vezlo_conversations(closed_at);
 
 -- Messages indexes
 CREATE INDEX IF NOT EXISTS idx_vezlo_messages_uuid ON vezlo_messages(uuid);
@@ -244,6 +252,7 @@ CREATE INDEX IF NOT EXISTS idx_vezlo_messages_parent_id ON vezlo_messages(parent
 CREATE INDEX IF NOT EXISTS idx_vezlo_messages_type ON vezlo_messages(type);
 CREATE INDEX IF NOT EXISTS idx_vezlo_messages_status ON vezlo_messages(status);
 CREATE INDEX IF NOT EXISTS idx_vezlo_messages_created_at ON vezlo_messages(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_vezlo_messages_author_id ON vezlo_messages(author_id);
 
 -- Message feedback indexes
 CREATE INDEX IF NOT EXISTS idx_vezlo_feedback_uuid ON vezlo_message_feedback(uuid);

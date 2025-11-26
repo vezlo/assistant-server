@@ -116,7 +116,7 @@ Important:
 
     if (history.length > 0) {
       const trimmedHistory = history.slice(-6).map<OpenAI.Chat.Completions.ChatCompletionMessageParam>(msg => ({
-        role: msg.role,
+        role: msg.role === 'agent' ? 'assistant' : msg.role,
         content: msg.content
       }));
       messages.push(...trimmedHistory);

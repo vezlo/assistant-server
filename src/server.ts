@@ -10,7 +10,7 @@ import { specs, swaggerUiOptions } from './config/swagger';
 import { config as globalConfig } from './config/global';
 import logger from './config/logger';
 import { errorHandler, notFoundHandler, asyncHandler } from './middleware/errorHandler';
-import { authenticateUser, authenticateApiKey, authenticateUserOrApiKey } from './middleware/auth';
+import { authenticateUser, authenticateApiKey, authenticateUserOrApiKey, AuthenticatedRequest } from './middleware/auth';
 import { ChatController } from './controllers/ChatController';
 import { KnowledgeController } from './controllers/KnowledgeController';
 import { AuthController } from './controllers/AuthController';
@@ -293,6 +293,51 @@ app.get('/api/api-keys/status', authenticateUser(supabase), (req, res) => apiKey
 /**
  * @swagger
  * /api/conversations:
+ *   get:
+ *     summary: List conversations
+ *     description: Returns paginated conversations for the authenticated workspace.
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number (1-indexed)
+ *       - in: query
+ *         name: page_size
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Number of conversations per page (max 100)
+ *       - in: query
+ *         name: order_by
+ *         schema:
+ *           type: string
+ *           enum: [last_message_at, created_at]
+ *           default: last_message_at
+ *         description: Sort conversations by latest activity or creation time (always descending)
+ *     responses:
+ *       200:
+ *         description: Conversations retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ConversationListResponse'
+ *       401:
+ *         description: Not authenticated
+ *       500:
+ *         description: Internal server error
+ */
+app.get('/api/conversations', authenticateUser(supabase), (req, res) =>
+  chatController.getUserConversations(req as AuthenticatedRequest, res)
+);
+
+/**
+ * @swagger
+ * /api/conversations:
  *   post:
  *     summary: Create a new conversation
  *     description: Create a new conversation (Public API - No authentication required)
@@ -322,8 +367,10 @@ app.post('/api/conversations', (req, res) => chatController.createConversation(r
  * /api/conversations/{uuid}:
  *   get:
  *     summary: Get conversation by UUID
- *     description: Retrieve a specific conversation by its UUID (Public API - No authentication required)
+ *     description: Retrieve a specific conversation (requires authentication and workspace membership).
  *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: uuid
@@ -340,10 +387,67 @@ app.post('/api/conversations', (req, res) => chatController.createConversation(r
  *               $ref: '#/components/schemas/GetConversationResponse'
  *       404:
  *         description: Conversation not found
+ *       401:
+ *         description: Not authenticated
  *       500:
  *         description: Internal server error
  */
-app.get('/api/conversations/:uuid', (req, res) => chatController.getConversation(req, res));
+app.get('/api/conversations/:uuid', authenticateUser(supabase), (req, res) =>
+  chatController.getConversation(req as AuthenticatedRequest, res)
+);
+
+/**
+ * @swagger
+ * /api/conversations/{uuid}/messages:
+ *   get:
+ *     summary: List conversation messages
+ *     description: Retrieve paginated messages for a conversation.
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: uuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Conversation UUID
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Message page number (1-indexed)
+ *       - in: query
+ *         name: page_size
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Messages per page (max 200)
+ *       - in: query
+ *         name: order
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *           default: desc
+ *         description: Sort order by creation time (descending shows newest first)
+ *     responses:
+ *       200:
+ *         description: Messages retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ConversationMessagesResponse'
+ *       401:
+ *         description: Not authenticated
+ *       404:
+ *         description: Conversation not found
+ *       500:
+ *         description: Internal server error
+ */
+app.get('/api/conversations/:uuid/messages', authenticateUser(supabase), (req, res) =>
+  chatController.getConversationMessages(req as AuthenticatedRequest, res)
+);
 
 /**
  * @swagger
@@ -438,29 +542,6 @@ app.post('/api/conversations/:uuid/messages', (req, res) => chatController.creat
  *         description: Internal server error
  */
 app.post('/api/messages/:uuid/generate', (req, res) => chatController.generateResponse(req, res));
-
-/**
- * @swagger
- * /api/conversations:
- *   get:
- *     summary: Get user conversations
- *     description: Get all conversations for the authenticated user
- *     tags: [Chat]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Conversations retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ConversationListResponse'
- *       401:
- *         description: Not authenticated
- *       500:
- *         description: Internal server error
- */
-app.get('/api/conversations', authenticateUser(supabase), (req, res) => chatController.getUserConversations(req, res));
 
 /**
  * @swagger

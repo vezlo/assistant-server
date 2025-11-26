@@ -1,5 +1,9 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { ChatConversation } from '../types';
+import {
+  ChatConversation,
+  ConversationListOptions,
+  ConversationListResult
+} from '../types';
 
 export class ConversationRepository {
   private supabase: SupabaseClient;
@@ -63,6 +67,7 @@ export class ConversationRepository {
       .from(tableName)
       .select('*')
       .eq('uuid', conversationId)
+      .is('deleted_at', null)
       .single();
 
     if (error) {
@@ -79,6 +84,10 @@ export class ConversationRepository {
     const updateData: any = {};
     if (updates.title !== undefined) updateData.title = updates.title;
     if (updates.messageCount !== undefined) updateData.message_count = updates.messageCount;
+    if (updates.lastMessageAt !== undefined) updateData.last_message_at = updates.lastMessageAt instanceof Date ? updates.lastMessageAt.toISOString() : updates.lastMessageAt;
+    if (updates.joinedAt !== undefined) updateData.joined_at = updates.joinedAt instanceof Date ? updates.joinedAt.toISOString() : updates.joinedAt;
+    if (updates.respondedAt !== undefined) updateData.responded_at = updates.respondedAt instanceof Date ? updates.respondedAt.toISOString() : updates.respondedAt;
+    if (updates.closedAt !== undefined) updateData.closed_at = updates.closedAt instanceof Date ? updates.closedAt.toISOString() : updates.closedAt;
     updateData.updated_at = new Date().toISOString();
 
     const { data, error } = await this.supabase
@@ -104,35 +113,47 @@ export class ConversationRepository {
     return true;
   }
 
-  async getUserConversations(userId: string, organizationId?: string): Promise<ChatConversation[]> {
+  async getUserConversations(
+    userId: string,
+    organizationId?: string,
+    options: ConversationListOptions = {}
+  ): Promise<ConversationListResult> {
     const tableName = this.getTableName('conversations');
-    
+
+    const { limit, offset, orderBy } = options;
+    const orderColumn = orderBy === 'last_message_at' ? 'last_message_at' : 'updated_at';
+    const from = typeof offset === 'number' && offset >= 0 ? offset : 0;
+    const pageSize = typeof limit === 'number' && limit > 0 ? limit : undefined;
+
     let query = this.supabase
       .from(tableName)
-      .select('*')
-      .eq('creator_id', parseInt(userId) || 1)
-      .order('updated_at', { ascending: false });
+      .select('*', { count: 'exact' })
+      .is('deleted_at', null);
 
     if (organizationId) {
       query = query.eq('company_id', parseInt(organizationId) || 1);
+    } else {
+      query = query.eq('creator_id', parseInt(userId) || 1);
     }
 
-    const { data, error } = await query;
+    query = query.order(orderColumn, { ascending: false, nullsFirst: false });
+
+    if (pageSize) {
+      query = query.range(from, from + pageSize - 1);
+    }
+
+    const { data, error, count } = await query;
 
     if (error) throw new Error(`Failed to get user conversations: ${error.message}`);
-    
-    // Note: getUserConversations doesn't need UUIDs since we're using the internal ID for filtering
-    // The ChatController handles the response mapping
-    return (data || []).map(row => ({
-      id: row.uuid,
-      threadId: row.uuid,
-      title: row.title,
-      userId: row.creator_id?.toString() || '1',
-      organizationId: row.company_id?.toString(),
-      messageCount: row.message_count || 0,
-      createdAt: new Date(row.created_at),
-      updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(row.created_at)
-    }));
+
+    const conversations = await Promise.all(
+      (data || []).map(row => this.rowToConversation(row))
+    );
+
+    return {
+      conversations,
+      total: typeof count === 'number' ? count : conversations.length
+    };
   }
 
   private async rowToConversation(row: any, fetchUuids: boolean = false): Promise<ChatConversation> {
@@ -166,7 +187,11 @@ export class ConversationRepository {
       organizationId,
       messageCount: row.message_count || 0,
       createdAt: new Date(row.created_at),
-      updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(row.created_at)
+      updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(row.created_at),
+      joinedAt: row.joined_at ? new Date(row.joined_at) : undefined,
+      respondedAt: row.responded_at ? new Date(row.responded_at) : undefined,
+      closedAt: row.closed_at ? new Date(row.closed_at) : undefined,
+      lastMessageAt: row.last_message_at ? new Date(row.last_message_at) : undefined
     };
   }
 }

@@ -3,7 +3,9 @@ import {
   ChatStorage,
   ChatConversation,
   StoredChatMessage,
-  Feedback
+  Feedback,
+  ConversationListOptions,
+  ConversationListResult
 } from '../types';
 
 export class SupabaseStorage implements ChatStorage {
@@ -89,6 +91,18 @@ export class SupabaseStorage implements ChatStorage {
 
     if (updates.title !== undefined) updateData.title = updates.title;
     if (updates.messageCount !== undefined) updateData.message_count = updates.messageCount;
+    if (updates.lastMessageAt !== undefined) {
+      updateData.last_message_at = updates.lastMessageAt instanceof Date ? updates.lastMessageAt.toISOString() : updates.lastMessageAt;
+    }
+    if (updates.joinedAt !== undefined) {
+      updateData.joined_at = updates.joinedAt instanceof Date ? updates.joinedAt.toISOString() : updates.joinedAt;
+    }
+    if (updates.respondedAt !== undefined) {
+      updateData.responded_at = updates.respondedAt instanceof Date ? updates.respondedAt.toISOString() : updates.respondedAt;
+    }
+    if (updates.closedAt !== undefined) {
+      updateData.closed_at = updates.closedAt instanceof Date ? updates.closedAt.toISOString() : updates.closedAt;
+    }
 
     const { data, error } = await this.supabase
       .from(tableName)
@@ -113,28 +127,47 @@ export class SupabaseStorage implements ChatStorage {
     return true;
   }
 
-  async getUserConversations(userId: string, organizationId?: string): Promise<ChatConversation[]> {
+  async getUserConversations(
+    userId: string,
+    organizationId?: string,
+    options: ConversationListOptions = {}
+  ): Promise<ConversationListResult> {
     const tableName = this.getTableName('conversations');
     
     // Convert string IDs to integers (dummy IDs for now)
     const creatorId = parseInt(userId) || 1;
     const companyId = organizationId ? parseInt(organizationId) || 1 : null;
+    const { limit, offset, orderBy } = options;
+    const orderColumn = orderBy === 'last_message_at' ? 'last_message_at' : 'updated_at';
+    const from = typeof offset === 'number' && offset >= 0 ? offset : 0;
+    const pageSize = typeof limit === 'number' && limit > 0 ? limit : undefined;
 
     let query = this.supabase
       .from(tableName)
-      .select('*')
-      .eq('creator_id', creatorId)
-      .is('deleted_at', null)
-      .order('updated_at', { ascending: false });
+      .select('*', { count: 'exact' })
+      .is('deleted_at', null);
 
     if (companyId) {
       query = query.eq('company_id', companyId);
+    } else {
+      query = query.eq('creator_id', creatorId);
     }
 
-    const { data, error } = await query;
+    query = query.order(orderColumn, { ascending: false, nullsFirst: false });
+
+    if (pageSize) {
+      query = query.range(from, from + pageSize - 1);
+    }
+
+    const { data, error, count } = await query;
 
     if (error) throw new Error(`Failed to get user conversations: ${error.message}`);
-    return data.map(row => this.rowToConversation(row));
+    const conversations = (data || []).map(row => this.rowToConversation(row));
+
+    return {
+      conversations,
+      total: typeof count === 'number' ? count : conversations.length
+    };
   }
 
   async saveMessage(message: StoredChatMessage): Promise<StoredChatMessage> {
@@ -224,8 +257,15 @@ export class SupabaseStorage implements ChatStorage {
     }
   }
 
-  async getMessages(conversationId: string, limit = 50, offset = 0): Promise<StoredChatMessage[]> {
+  async getMessages(
+    conversationId: string,
+    limit = 50,
+    offset = 0,
+    options: { order?: 'asc' | 'desc' } = {}
+  ): Promise<StoredChatMessage[]> {
     // Join messages with conversations to get conversation UUID
+    const ascending = options.order !== 'desc';
+
     const { data, error } = await this.supabase
       .from(this.getTableName('messages'))
       .select(`
@@ -240,7 +280,7 @@ export class SupabaseStorage implements ChatStorage {
         ` + this.getTableName('conversations') + `!inner(uuid)
       `)
       .eq(`${this.getTableName('conversations')}.uuid`, conversationId)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending })
       .range(offset, offset + limit - 1);
 
     if (error) throw new Error(`Failed to get messages: ${error.message}`);
@@ -383,7 +423,11 @@ export class SupabaseStorage implements ChatStorage {
       messageCount: row.message_count,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
-      deletedAt: row.deleted_at ? new Date(row.deleted_at) : undefined
+      deletedAt: row.deleted_at ? new Date(row.deleted_at) : undefined,
+      joinedAt: row.joined_at ? new Date(row.joined_at) : undefined,
+      respondedAt: row.responded_at ? new Date(row.responded_at) : undefined,
+      closedAt: row.closed_at ? new Date(row.closed_at) : undefined,
+      lastMessageAt: row.last_message_at ? new Date(row.last_message_at) : undefined
     };
   }
 

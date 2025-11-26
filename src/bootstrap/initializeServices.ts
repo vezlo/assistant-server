@@ -10,6 +10,7 @@ import { AuthController } from '../controllers/AuthController';
 import { ApiKeyService } from '../services/ApiKeyService';
 import { ApiKeyController } from '../controllers/ApiKeyController';
 import { IntentService } from '../services/IntentService';
+import { RealtimePublisher } from '../services/RealtimePublisher';
 
 export interface ServiceInitOptions {
   supabase: SupabaseClient;
@@ -117,9 +118,22 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
     organizationName: process.env.ORGANIZATION_NAME
   });
 
+  // Initialize realtime publisher if env vars are available
+  let realtimePublisher: RealtimePublisher | undefined;
+  if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
+    realtimePublisher = new RealtimePublisher(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY
+    );
+    logger.info('✅ Realtime publisher initialized');
+  } else {
+    logger.warn('⚠️  Realtime publisher not initialized (missing SUPABASE_URL or SUPABASE_SERVICE_KEY)');
+  }
+
   const chatController = new ChatController(chatManager, storage, supabase, {
     historyLength: resolvedHistoryLength,
-    intentService
+    intentService,
+    realtimePublisher
   });
 
   const knowledgeController = new KnowledgeController(knowledgeBase, aiService);

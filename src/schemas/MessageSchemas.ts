@@ -32,9 +32,11 @@ export const MessageSchemas = {
       uuid: { type: 'string', description: 'Message UUID' },
       conversation_uuid: { type: 'string', description: 'Conversation UUID' },
       parent_message_uuid: { type: 'string', description: 'Parent message UUID (for regeneration)' },
-      type: { type: 'string', enum: ['user', 'assistant', 'system'], description: 'Message type' },
+      type: { type: 'string', enum: ['user', 'assistant', 'system', 'agent'], description: 'Message type' },
       content: { type: 'string', description: 'Message content' },
       status: { type: 'string', enum: ['generating', 'completed', 'stopped', 'failed'], description: 'Message status' },
+      author_id: { type: 'string', nullable: true, description: 'Human agent user ID (if applicable)' },
+      metadata: { type: 'object', additionalProperties: true },
       created_at: { type: 'string', format: 'date-time' }
     }
   },

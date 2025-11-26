@@ -26,7 +26,7 @@ export interface ChatContext {
 }
 
 export interface ChatMessage {
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'agent';
   content: string;
   createdAt?: Date;
   toolCalls?: any;
@@ -75,19 +75,39 @@ export interface ChatConversation {
   createdAt: Date;
   updatedAt: Date;
   deletedAt?: Date;
+  joinedAt?: Date;
+  respondedAt?: Date;
+  closedAt?: Date;
+  lastMessageAt?: Date;
 }
 
 export interface StoredChatMessage {
   id?: string;
   conversationId: string;
   threadId: string;
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'agent';
   content: string;
   parentMessageId?: string;
   toolCalls?: any;
   toolResults?: DatabaseSearchResult[];
+  authorId?: string;
   createdAt: Date;
   updatedAt?: Date;
+}
+
+export interface MessageListOptions {
+  order?: 'asc' | 'desc';
+}
+
+export interface ConversationListOptions {
+  limit?: number;
+  offset?: number;
+  orderBy?: 'last_message_at' | 'updated_at';
+}
+
+export interface ConversationListResult {
+  conversations: ChatConversation[];
+  total: number;
 }
 
 export interface ChatStorage {
@@ -95,9 +115,18 @@ export interface ChatStorage {
   getConversation(conversationId: string): Promise<ChatConversation | null>;
   updateConversation(conversationId: string, updates: Partial<ChatConversation>): Promise<ChatConversation>;
   deleteConversation(conversationId: string): Promise<boolean>;
-  getUserConversations(userId: string, organizationId?: string): Promise<ChatConversation[]>;
+  getUserConversations(
+    userId: string,
+    organizationId?: string,
+    options?: ConversationListOptions
+  ): Promise<ConversationListResult>;
   saveMessage(message: StoredChatMessage): Promise<StoredChatMessage>;
-  getMessages(conversationId: string, limit?: number, offset?: number): Promise<StoredChatMessage[]>;
+  getMessages(
+    conversationId: string,
+    limit?: number,
+    offset?: number,
+    options?: MessageListOptions
+  ): Promise<StoredChatMessage[]>;
   deleteMessage(messageId: string): Promise<boolean>;
   saveFeedback(feedback: Feedback): Promise<Feedback>;
   getFeedback(messageId: string): Promise<Feedback[]>;

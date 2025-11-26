@@ -235,7 +235,8 @@ export class ChatManager {
     }
 
     try {
-      return await this.config.storage.getUserConversations(userId, organizationId);
+      const result = await this.config.storage.getUserConversations(userId, organizationId);
+      return result.conversations;
     } catch (error) {
       console.error('Failed to get user conversations:', error);
       return [];

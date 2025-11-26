@@ -26,13 +26,13 @@ const jsMigrationProbe = path.join(distMigrationsPath, '001_initial_schema.js');
 const hasTsMigrations = fs.existsSync(tsMigrationProbe);
 const hasJsMigrations = fs.existsSync(jsMigrationProbe);
 
-const resolvedMigrationsDirectory = hasTsMigrations
-  ? srcMigrationsPath
-  : hasJsMigrations
-    ? distMigrationsPath
-    : srcMigrationsPath;
+const preferJsMigrations = hasJsMigrations;
 
-const migrationExtension = hasTsMigrations ? 'ts' : (hasJsMigrations ? 'js' : 'ts');
+const resolvedMigrationsDirectory = preferJsMigrations
+  ? distMigrationsPath
+  : srcMigrationsPath;
+
+const migrationExtension = preferJsMigrations ? 'js' : 'ts';
 const migrationLoadExtensions = migrationExtension === 'ts' ? ['.ts'] : ['.js'];
 
 const supabaseMigrationsDirectory = fs.existsSync(distMigrationsPath)
