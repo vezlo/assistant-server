@@ -277,7 +277,9 @@ export class ChatController {
       const userMessageContent = userMessage.content;
 
       // Get conversation context (recent messages)
-      const messages = await this.chatManager.getRecentMessages(conversationId, this.chatHistoryLength);
+      // Exclude the current user message to avoid duplication (it's added separately as the query)
+      const allMessages = await this.chatManager.getRecentMessages(conversationId, this.chatHistoryLength + 1);
+      const messages = allMessages.filter(msg => msg.id !== uuid).slice(-this.chatHistoryLength);
       logger.info(`📜 Retrieved ${messages.length} message(s) from conversation history (limit: ${this.chatHistoryLength})`);
       
       const conversation = await this.storage.getConversation(conversationId);

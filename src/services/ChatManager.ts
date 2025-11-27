@@ -169,8 +169,9 @@ export class ChatManager {
       return [];
     }
 
-    const historyLimit = typeof limit === 'number' && limit > 0 ? limit : this.historyLength;
-    if (historyLimit <= 0) {
+    // limit represents number of PAIRS (user+assistant), not raw messages
+    const pairLimit = typeof limit === 'number' && limit > 0 ? limit : this.historyLength;
+    if (pairLimit <= 0) {
       return [];
     }
 
@@ -189,38 +190,35 @@ export class ChatManager {
       }
     }
 
-    let totalMessages = conversation?.messageCount ?? 0;
-    if (includePending) {
-      totalMessages += 1;
-    }
-
-    let offset = 0;
-    if (totalMessages > historyLimit) {
-      offset = totalMessages - historyLimit;
-    }
+    // Fetch only user and assistant messages from database
+    // Standard approach: fetch limit messages (not pairs), newest first
+    const fetchLimit = typeof limit === 'number' && limit > 0 ? limit : this.historyLength;
 
     let messages: ChatMessage[] = [];
 
     try {
-      const storedMessages = await this.config.storage.getMessages(threadId, historyLimit, offset);
-
-      if (storedMessages.length < historyLimit && offset > 0) {
-        // Fallback: fetch from start and take latest N in case message counts are out of sync
-        const retryMessages = await this.config.storage.getMessages(threadId, historyLimit);
-        messages = retryMessages.slice(-historyLimit).map(msg => ({
-          role: msg.role,
-          content: msg.content,
-          createdAt: msg.createdAt,
-          toolResults: msg.toolResults
-        }));
-      } else {
-        messages = storedMessages.slice(-historyLimit).map(msg => ({
-          role: msg.role,
-          content: msg.content,
-          createdAt: msg.createdAt,
-          toolResults: msg.toolResults
-        }));
+      // Fetch only user and assistant messages (filter at DB level)
+      // Fetch in DESC order (newest first) to ensure we get latest context
+      const storedMessages = await this.config.storage.getMessages(threadId, fetchLimit, 0, {
+        types: ['user', 'assistant'],
+        order: 'desc'
+      });
+      
+      if (storedMessages.length === 0) {
+        return [];
       }
+
+      // Reverse to get chronological order (oldest first) for LLM
+      storedMessages.reverse();
+
+      // Convert to ChatMessage format - no pairing, keep all messages as-is
+      messages = storedMessages.map(msg => ({
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        createdAt: msg.createdAt,
+        toolResults: msg.toolResults
+      }));
     } catch (error) {
       console.error('Failed to get recent messages:', error);
       return [];

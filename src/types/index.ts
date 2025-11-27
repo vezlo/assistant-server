@@ -26,6 +26,7 @@ export interface ChatContext {
 }
 
 export interface ChatMessage {
+  id?: string;
   role: 'user' | 'assistant' | 'system' | 'agent';
   content: string;
   createdAt?: Date;
@@ -98,6 +99,7 @@ export interface StoredChatMessage {
 
 export interface MessageListOptions {
   order?: 'asc' | 'desc';
+  types?: string[];
 }
 
 export interface ConversationListOptions {

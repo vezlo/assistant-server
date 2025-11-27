@@ -106,7 +106,7 @@ export class MessageRepository {
     conversationId: string,
     limit = 50,
     offset = 0,
-    options: { order?: 'asc' | 'desc' } = {}
+    options: { order?: 'asc' | 'desc'; types?: string[] } = {}
   ): Promise<StoredChatMessage[]> {
     const tableName = this.getTableName('messages');
     
@@ -123,10 +123,17 @@ export class MessageRepository {
 
     const ascending = options.order !== 'desc';
 
-    const { data, error } = await this.supabase
+    let query = this.supabase
       .from(tableName)
       .select('*')
-      .eq('conversation_id', conversationQuery.data.id)
+      .eq('conversation_id', conversationQuery.data.id);
+
+    // Filter by message types if specified
+    if (options.types && options.types.length > 0) {
+      query = query.in('type', options.types);
+    }
+
+    const { data, error } = await query
       .order('created_at', { ascending })
       .range(offset, offset + limit - 1);
 
