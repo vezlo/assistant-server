@@ -29,8 +29,8 @@ const hasJsMigrations = fs.existsSync(jsMigrationProbe);
 const preferJsMigrations = hasJsMigrations;
 
 const resolvedMigrationsDirectory = preferJsMigrations
-  ? distMigrationsPath
-  : srcMigrationsPath;
+    ? distMigrationsPath
+    : srcMigrationsPath;
 
 const migrationExtension = preferJsMigrations ? 'js' : 'ts';
 const migrationLoadExtensions = migrationExtension === 'ts' ? ['.ts'] : ['.js'];

@@ -17,9 +17,9 @@ export class RealtimePublisher {
     try {
       logger.info(`[RealtimePublisher] Publishing event "${event}" to channel "${channelName}"`);
       const channel = this.client.channel(channelName);
-      
+
       const result = await channel.send({
-        type: 'broadcast',
+              type: 'broadcast',
         event: event,
         payload: payload
       });
