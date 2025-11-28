@@ -1,3 +1,12 @@
+## [2.2.2] - 2025-11-28
+
+### Added
+- Human agent API flow: `POST /api/conversations/:uuid/join`, `POST /api/conversations/:uuid/messages/agent`, `POST /api/conversations/:uuid/close`.
+- Conversation status + system messages now broadcast via Supabase Realtime for agent handoff.
+
+### Changed
+- Documentation refreshed to highlight agent workflows and realtime requirements.
+
 # Changelog
 
 All notable changes to this project will be documented in this file.

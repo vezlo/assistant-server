@@ -365,10 +365,13 @@ http://localhost:3000/api
 ### Core Endpoints
 
 #### Conversations
-- `POST /api/conversations` - Create new conversation
+- `POST /api/conversations` - Create new conversation (public widget endpoint)
+- `GET /api/conversations` - List company conversations (agent dashboard)
 - `GET /api/conversations/:uuid` - Get conversation with messages
 - `DELETE /api/conversations/:uuid` - Delete conversation
-- `GET /api/users/:uuid/conversations` - Get user conversations
+- `POST /api/conversations/:uuid/join` - Agent joins a conversation
+- `POST /api/conversations/:uuid/messages/agent` - Agent sends a message
+- `POST /api/conversations/:uuid/close` - Agent closes a conversation
 
 #### Messages
 - `POST /api/conversations/:uuid/messages` - Create user message

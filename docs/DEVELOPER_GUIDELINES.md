@@ -163,18 +163,19 @@ updated_at TIMESTAMP DEFAULT NOW()
 
 #### **RESTful Conventions**
 ```
-GET    /api/conversations/{uuid}           # Get conversation
-POST   /api/conversations                   # Create conversation
-PUT    /api/conversations/{uuid}            # Update conversation
-DELETE /api/conversations/{uuid}           # Delete conversation
-
-GET    /api/conversations/{uuid}/messages   # Get messages
-POST   /api/conversations/{uuid}/messages   # Create message
-POST   /api/messages/{uuid}/generate       # Generate AI response
+POST   /api/conversations                       # Create conversation (widget)
+GET    /api/conversations                       # List conversations (agent)
+GET    /api/conversations/{uuid}                # Get conversation
+DELETE /api/conversations/{uuid}                # Delete conversation
+POST   /api/conversations/{uuid}/join           # Agent joins conversation
+POST   /api/conversations/{uuid}/messages       # User message
+POST   /api/conversations/{uuid}/messages/agent # Agent message
+POST   /api/conversations/{uuid}/close          # Agent closes conversation
+POST   /api/messages/{uuid}/generate            # Generate AI response
 
 # Migration endpoints (keep Vercel and server.ts in sync)
-GET    /api/migrate                         # Run pending DB migrations (requires MIGRATION_SECRET_KEY)
-GET    /api/migrate/status                  # Check migration status (requires MIGRATION_SECRET_KEY)
+GET    /api/migrate                             # Run pending DB migrations (requires MIGRATION_SECRET_KEY)
+GET    /api/migrate/status                      # Check migration status (requires MIGRATION_SECRET_KEY)
 ```
 
 #### **2-API Conversation Flow**

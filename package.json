@@ -1,7 +1,7 @@
 {
   "name": "@vezlo/assistant-server",
-  "version": "2.2.1",
-  "description": "Production-ready AI Assistant Server with vector search, conversation management, and real-time communication",
+  "version": "2.2.2",
+  "description": "Production-ready AI Assistant Server with vector search, conversation management, real-time communication, and human agent handoff",
   "main": "dist/src/server.js",
   "types": "dist/src/server.d.ts",
   "bin": {
