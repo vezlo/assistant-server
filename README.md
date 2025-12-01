@@ -23,9 +23,10 @@ See [CHANGELOG.md](./CHANGELOG.md) for complete migration guide.
 ## 🏗️ Architecture
 
 - **Backend APIs** - RESTful API endpoints for AI chat and knowledge management
-- **Real-time Communication** - WebSocket support for live chat
+- **Real-time Communication** - WebSocket support for live chat with Supabase Realtime broadcasting
+- **Human Agent Handoff** - Agent join/leave workflows with realtime status updates and message synchronization
 - **Vector Search** - Supabase-powered semantic search with embeddings
-- **Conversation Management** - Persistent conversation history
+- **Conversation Management** - Persistent conversation history with agent support
 - **Feedback System** - Message rating and improvement tracking
 - **Database Migrations** - Knex.js migration system for schema management
 - **Production Ready** - Docker containerization with health checks
