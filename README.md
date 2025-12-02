@@ -1,20 +1,25 @@
 # Vezlo AI Assistant Server
 
-🚀 **Production-ready Node.js/TypeScript API server** for the Vezlo AI Assistant platform - Complete backend APIs with Docker deployment and database migrations.
+🚀 **Production-ready Node.js/TypeScript API server** for the Vezlo AI Assistant platform - Complete backend APIs with advanced RAG (chunk-based semantic search + adjacent retrieval), Docker deployment, and database migrations.
 
-## 🚨 Breaking Change Notice (v2.0.0)
+## 🚨 Breaking Change Notice
 
-**This version introduces multi-tenancy support with breaking changes. Existing data will not be migrated automatically.**
+### v2.3.0 - Enhanced RAG System (Latest)
+**New chunk-based architecture with adjacent retrieval for better code understanding.**
 
-### Migration Required
-- **Database Schema**: New authentication and multi-tenancy tables
-- **Auth Model**: Endpoints now use a mix of auth modes — some support JWT or API key, and select public endpoints remain for the chat widget
-- **Data Structure**: Foreign key relationships updated for multi-tenancy
+- **Database Schema**: New `vezlo_knowledge_chunks` table and RPC functions
+- **Embedding Model**: Upgraded to `text-embedding-3-large` (3072 dimensions)
+- **Migration**: Automatic via `npm run migrate:latest` (migration 006)
+- **Rollback**: Supported via `npm run migrate:rollback`
 
-### Quick Migration Steps
-1. **Upgrade**: `npm install @vezlo/assistant-server@latest`
-2. **Run migrations**: `npm run migrate:latest`
-3. **Setup**: `npm run seed-default`
+**Upgrade Steps:**
+```bash
+npm install @vezlo/assistant-server@latest
+npm run migrate:latest
+```
+
+### v2.0.0 - Multi-tenancy Support
+**Introduced multi-tenancy with authentication. Existing data not auto-migrated.**
 
 See [CHANGELOG.md](./CHANGELOG.md) for complete migration guide.
 
@@ -25,7 +30,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for complete migration guide.
 - **Backend APIs** - RESTful API endpoints for AI chat and knowledge management
 - **Real-time Communication** - WebSocket support for live chat with Supabase Realtime broadcasting
 - **Human Agent Handoff** - Agent join/leave workflows with realtime status updates and message synchronization
-- **Vector Search** - Supabase-powered semantic search with embeddings
+- **Advanced RAG System** - Chunk-based semantic search with adjacent retrieval using OpenAI text-embedding-3-large (3072 dims) and pgvector
 - **Conversation Management** - Persistent conversation history with agent support
 - **Feedback System** - Message rating and improvement tracking
 - **Database Migrations** - Knex.js migration system for schema management
@@ -308,7 +313,7 @@ RATE_LIMIT_MAX=100
 ORGANIZATION_NAME=Vezlo
 ASSISTANT_NAME=Vezlo Assistant
 
-# OPTIONAL - Knowledge Base
+# OPTIONAL - Knowledge Base (uses text-embedding-3-large, 3072 dims)
 CHUNK_SIZE=1000
 CHUNK_OVERLAP=200
 ```

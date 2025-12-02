@@ -37,6 +37,7 @@ export class AIService {
     this.systemPrompt = this.buildSystemPrompt();
   }
 
+
   private buildSystemPrompt(): string {
     const orgName = this.config.organizationName || 'Your Organization';
     const assistantName = this.config.assistantName || `${orgName} AI Assistant`;
@@ -107,9 +108,7 @@ The knowledge base contains curated content ingested through the src-to-kb pipel
         // Only search if knowledgeResults was not provided (undefined)
         // This means the caller hasn't done the search yet
         const searchResults = await this.knowledgeBaseService.search(message, {
-          limit: 5,
-          threshold: 0.5,
-          type: 'semantic'
+          limit: 5
         });
 
         if (searchResults.length > 0) {

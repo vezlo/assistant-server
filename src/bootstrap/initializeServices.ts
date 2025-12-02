@@ -79,6 +79,8 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
     tableName: knowledgeTableName
   });
 
+  // Initialize V2 service for adjacent chunk retrieval
+
   // Read AI configuration from environment
   // Use AI_MODEL for all OpenAI calls (intent classification + response generation)
   const aiModel = process.env.AI_MODEL || 'gpt-4o-mini';
@@ -101,6 +103,8 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
     maxTokens: aiMaxTokens,
     knowledgeBaseService: knowledgeBase
   });
+
+  // Set V2 service for adjacent chunk retrieval
 
   const chatManager = new ChatManager({
     aiService,

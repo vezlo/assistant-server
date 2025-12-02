@@ -1,3 +1,34 @@
+## [2.3.0] - 2025-12-02
+
+### Breaking Changes
+- **Enhanced RAG Architecture**: New chunk-based semantic search with adjacent retrieval
+- **Database Schema**: Migration 006 adds `vezlo_knowledge_chunks` table and new RPC functions
+- **Embedding Model**: Upgraded to OpenAI `text-embedding-3-large` (3072 dimensions)
+
+### Added
+- Chunk-based knowledge storage with overlap for better context preservation
+- Adjacent chunk retrieval (±2 chunks) for complete code/function understanding
+- Top-k search strategy (no threshold) for consistent results
+- New RPC functions: `vezlo_insert_knowledge_chunk`, `vezlo_match_knowledge_chunks`
+- HNSW vector index with graceful fallback for high-dimensional embeddings
+- Configurable embedding model constants (`EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`)
+
+### Changed
+- Search strategy: Top-5 semantic search + ±2 adjacent chunks + merge by document
+- Removed keyword search and hybrid search (pure semantic now)
+- Removed threshold-based filtering (top-k only)
+- Intent classification now generates dynamic LLM responses (no hardcoded strings)
+- Added "acknowledgment" intent for gratitude expressions
+
+### Removed
+- Keyword search functionality
+- Hybrid search mode
+
+### Migration
+- Run `npm run migrate:latest` to upgrade
+- Run `npm run migrate:rollback` to revert to v2.2.2
+- Old `match_vezlo_knowledge` function restored on rollback
+
 ## [2.2.2] - 2025-11-28
 
 ### Added

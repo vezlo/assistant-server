@@ -1,6 +1,10 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import logger from '../config/logger';
 
+// Embedding model configuration
+export const EMBEDDING_MODEL = 'text-embedding-3-large';
+export const EMBEDDING_DIMENSIONS = 3072;
+
 interface KnowledgeBaseConfig {
   supabase: SupabaseClient;
   tableName?: string;
@@ -23,8 +27,6 @@ interface KnowledgeItem {
 
 interface SearchOptions {
   limit?: number;
-  threshold?: number;
-  type?: 'semantic' | 'keyword' | 'hybrid';
   company_id?: number;
 }
 
@@ -38,9 +40,23 @@ interface SearchResult {
   metadata?: Record<string, any>;
 }
 
+interface ChunkResult {
+  chunk_id: number;
+  document_id: number;
+  document_uuid: string;
+  document_title: string;
+  document_description?: string;
+  document_type: string;
+  document_metadata?: Record<string, any>;
+  chunk_text: string;
+  chunk_index: number;
+  similarity: number;
+}
+
 export class KnowledgeBaseService {
   private supabase: SupabaseClient;
   private tableName: string;
+  private adjacentChunkSize: number = 2; // Fetch ±2 chunks
 
   constructor(config: KnowledgeBaseConfig) {
     this.supabase = config.supabase;
@@ -99,26 +115,21 @@ export class KnowledgeBaseService {
         updated_at: new Date().toISOString()
       };
 
-      // Generate embedding for content-based items
-      if (item.content && (item.type === 'document' || item.type === 'file')) {
-        console.log('Attempting to generate embedding for content:', item.content.substring(0, 100) + '...');
-        const embedding = await this.generateEmbedding(item.content);
-        if (embedding) {
-          console.log('Embedding generated successfully, length:', embedding.length);
-          insertData.embedding = embedding;
-          insertData.processed_at = new Date().toISOString();
-        } else {
-          console.log('Embedding generation returned null');
-        }
-      }
-
+      // Insert parent document (without embedding)
       const { data, error } = await this.supabase
         .from(this.tableName)
         .insert(insertData)
-        .select('uuid')
+        .select('id, uuid')
         .single();
 
       if (error) throw new Error(`Failed to create knowledge item: ${error.message}`);
+
+      // Create chunks with embeddings for content-based items
+      if (item.content && (item.type === 'document' || item.type === 'file')) {
+        console.log('Creating chunks for content...');
+        await this.createChunksForDocument(data.id, item.content, item.title);
+      }
+
       return data.uuid;
 
     } catch (error) {
@@ -314,172 +325,219 @@ export class KnowledgeBaseService {
     }
   }
 
+  /**
+   * Search with top-k + adjacent chunk retrieval strategy
+   */
   async search(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
     try {
-      const limit = options.limit || 5;
-      // Balanced precision/recall (0.5 is industry standard)
-      const threshold = options.threshold || 0.5;
-      const type = options.type || 'semantic'; // Modern RAG best practice: semantic-first
+      const topK = options.limit || 5;
+      const companyId = options.company_id;
 
-      // Reduced logging - only essential info
-      logger.info(`🔎 Search: type=${type}, threshold=${threshold}, limit=${limit}, companyId=${options.company_id ?? 'all'}`);
+      logger.info(`🔎 Search: top-k=${topK}, adjacent=±${this.adjacentChunkSize}, companyId=${companyId ?? 'all'}`);
 
-      if (type === 'semantic') {
-        return await this.semanticSearch(query, limit, threshold, options.company_id);
-      } else if (type === 'keyword') {
-        return await this.keywordSearch(query, limit, options.company_id);
-      } else {
-        // Hybrid search - combine both approaches
-        const semanticResults = await this.semanticSearch(query, Math.ceil(limit / 2), threshold, options.company_id);
-        const keywordResults = await this.keywordSearch(query, Math.ceil(limit / 2), options.company_id);
-        
-        // Merge and deduplicate results
-        const combined = [...semanticResults, ...keywordResults];
-        const unique = combined.filter((item, index, self) => 
-          index === self.findIndex(t => t.id === item.id)
-        );
-        
-        logger.info(`📊 Hybrid: ${semanticResults.length} semantic + ${keywordResults.length} keyword = ${unique.length} total`);
-        
-        return unique.slice(0, limit);
-      }
-
-    } catch (error) {
-      console.error('Search error:', error);
-      throw new Error(`Failed to search knowledge items: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  private async semanticSearch(query: string, limit: number, threshold: number, companyId?: number): Promise<SearchResult[]> {
-    try {
+      // Step 1: Generate query embedding
       const queryEmbedding = await this.generateEmbedding(query);
       if (!queryEmbedding) {
         logger.error('Failed to generate query embedding');
         return [];
       }
 
-      // Use optimized RPC function for vector search
-      // This uses pgvector's <=> operator directly in the database for efficient
-      // nearest-neighbor search, avoiding the need to fetch all records and calculate
-      // similarity in Node.js
-      const { data, error } = await this.supabase.rpc('match_vezlo_knowledge', {
-        query_embedding: queryEmbedding,
-        match_threshold: threshold,
-        match_count: limit,
-        filter_company_id: companyId !== undefined ? companyId : null
-      });
-
-      if (error) {
-        logger.error('RPC vector search error:', error);
-        throw new Error(`Semantic search failed: ${error.message}`);
-      }
-
-      if (!data || data.length === 0) {
-        logger.warn(`⚠️  No items found in DB for companyId=${companyId ?? 'all'}`);
+      // Step 2: Initial top-k semantic search (no threshold)
+      const initialChunks = await this.topKSemanticSearch(queryEmbedding, topK, companyId);
+      if (initialChunks.length === 0) {
+        logger.warn('⚠️  No chunks found in top-k search');
         return [];
       }
 
-      logger.info(`📦 RPC returned ${data.length} items`);
+      logger.info(`📦 Found ${initialChunks.length} initial chunks (scores: ${initialChunks.map(c => c.similarity.toFixed(2)).join(', ')})`);
 
-      // Transform RPC results to SearchResult format
-      const results: SearchResult[] = data.map((item: any) => ({
-        id: item.uuid,
-        title: item.title,
-        description: item.description,
-        content: item.content,
-        type: item.type,
-        score: item.similarity,
-        metadata: item.metadata
-      }));
+      // Step 3: Fetch adjacent chunks for each matched chunk
+      const enrichedChunks = await this.fetchAdjacentChunks(initialChunks);
+      logger.info(`📚 Enriched to ${enrichedChunks.length} total chunks (with adjacent context)`);
 
-      // Log results summary
-      if (results.length > 0) {
-        const topResults = results.slice(0, 3);
-        const topScores = topResults.map(r => `${r.title}:${r.score.toFixed(2)}`).join(', ');
-        logger.info(`✅ Found ${results.length} results above threshold (top: ${topScores})`);
-      }
+      // Step 4: Group by document and merge continuous sequences
+      const mergedResults = this.mergeAdjacentChunks(enrichedChunks, initialChunks);
+      logger.info(`✅ Merged into ${mergedResults.length} contextual results`);
 
-      return results;
+      return mergedResults;
 
     } catch (error) {
-      logger.error('Semantic search error:', error);
+      logger.error('Search error:', error);
       return [];
     }
   }
 
-  // Add cosine similarity function (from original implementation)
-  private cosineSimilarity(a: number[], b: number[]): number {
-    try {
-      // Validate inputs
-      if (!Array.isArray(a) || !Array.isArray(b)) {
-        console.error('Cosine similarity: inputs are not arrays', typeof a, typeof b);
-        return 0;
-      }
-      
-      if (a.length !== b.length) {
-        console.error('Cosine similarity: arrays have different lengths', a.length, b.length);
-        return 0;
-      }
+  /**
+   * Top-k semantic search (no threshold)
+   */
+  private async topKSemanticSearch(
+    queryEmbedding: number[],
+    topK: number,
+    companyId?: number
+  ): Promise<ChunkResult[]> {
+    const rpcParams = {
+      query_embedding: JSON.stringify(queryEmbedding),
+      match_threshold: 0.0, // No threshold - pure top-k
+      match_count: topK,
+      filter_company_id: companyId !== undefined ? companyId : null
+    };
 
-      if (a.length === 0) {
-        console.error('Cosine similarity: arrays are empty');
-        return 0;
-      }
+    const { data, error } = await this.supabase.rpc('vezlo_match_knowledge_chunks', rpcParams);
 
-      const dotProduct = a.reduce((sum, val, i) => sum + val * b[i], 0);
-      const magnitudeA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
-      const magnitudeB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
-      
-      if (magnitudeA === 0 || magnitudeB === 0) {
-        return 0;
-      }
-      
-      return dotProduct / (magnitudeA * magnitudeB);
-    } catch (error) {
-      console.error('Error in cosine similarity calculation:', error);
-      return 0;
+    if (error) {
+      logger.error('RPC top-k search error:', error);
+      throw new Error(`Top-k search failed: ${error.message}`);
     }
+
+    return data || [];
   }
 
-  private async keywordSearch(query: string, limit: number, companyId?: number): Promise<SearchResult[]> {
-    try {
-      let dbQuery = this.supabase
-        .from(this.tableName)
-        .select(`
+  /**
+   * Fetch adjacent chunks (±N) for all matched chunks in ONE query
+   */
+  private async fetchAdjacentChunks(matchedChunks: ChunkResult[]): Promise<ChunkResult[]> {
+    if (matchedChunks.length === 0) {
+      return [];
+    }
+
+    // Build similarity lookup map for matched chunks
+    const similarityMap = new Map<string, number>();
+    matchedChunks.forEach(chunk => {
+      similarityMap.set(`${chunk.document_id}-${chunk.chunk_index}`, chunk.similarity);
+    });
+
+    // Calculate all adjacent ranges and build OR conditions
+    const ranges: Array<{ documentId: number; minIndex: number; maxIndex: number }> = [];
+    
+    matchedChunks.forEach(chunk => {
+      const minIndex = Math.max(0, chunk.chunk_index - this.adjacentChunkSize);
+      const maxIndex = chunk.chunk_index + this.adjacentChunkSize;
+      
+      ranges.push({
+        documentId: chunk.document_id,
+        minIndex,
+        maxIndex
+      });
+    });
+
+    // Fetch ALL adjacent chunks in ONE query using OR conditions
+    let query = this.supabase
+      .from('vezlo_knowledge_chunks')
+      .select(`
+        id,
+        document_id,
+        chunk_text,
+        chunk_index,
+        vezlo_knowledge_items!inner(
           uuid,
           title,
           description,
-          content,
           type,
           metadata
-        `)
-        .textSearch('title,description,content', query, {
-          type: 'websearch',
-          config: 'english'
-        })
-        .limit(limit);
+        )
+      `);
 
-      if (companyId) {
-        dbQuery = dbQuery.eq('company_id', companyId);
-      }
+    // Build OR filter: (doc=1 AND idx>=10 AND idx<=14) OR (doc=2 AND idx>=5 AND idx<=9) OR ...
+    const orConditions = ranges.map(r => 
+      `and(document_id.eq.${r.documentId},chunk_index.gte.${r.minIndex},chunk_index.lte.${r.maxIndex})`
+    ).join(',');
 
-      const { data, error } = await dbQuery;
+    query = query.or(orConditions);
+    query = query.order('document_id', { ascending: true }).order('chunk_index', { ascending: true });
 
-      if (error) throw new Error(`Keyword search failed: ${error.message}`);
+    const { data, error } = await query;
 
-      return data.map(item => ({
-        id: item.uuid,
-        title: item.title,
-        description: item.description,
-        content: item.content,
-        type: item.type,
-        score: 0.8, // Default score for keyword matches
-        metadata: item.metadata
-      }));
-
-    } catch (error) {
-      return [];
+    if (error) {
+      logger.error('Failed to fetch adjacent chunks:', error);
+      return matchedChunks; // Fallback to original chunks on error
     }
+
+    if (!data || data.length === 0) {
+      return matchedChunks;
+    }
+
+    // Transform and assign similarity scores
+    const allChunks = data.map((row: any) => {
+      const doc = row.vezlo_knowledge_items;
+      const key = `${row.document_id}-${row.chunk_index}`;
+      const similarity = similarityMap.get(key) || 0; // Use original score if matched, else 0
+
+      return {
+        chunk_id: row.id,
+        document_id: row.document_id,
+        document_uuid: doc.uuid,
+        document_title: doc.title,
+        document_description: doc.description,
+        document_type: doc.type,
+        document_metadata: doc.metadata,
+        chunk_text: row.chunk_text,
+        chunk_index: row.chunk_index,
+        similarity
+      };
+    });
+
+    // Deduplicate by chunk_id
+    const uniqueChunks = new Map<number, ChunkResult>();
+    allChunks.forEach(chunk => {
+      if (!uniqueChunks.has(chunk.chunk_id)) {
+        uniqueChunks.set(chunk.chunk_id, chunk);
+      }
+    });
+
+    return Array.from(uniqueChunks.values());
+  }
+
+  /**
+   * Merge continuous chunk sequences by document
+   */
+  private mergeAdjacentChunks(
+    allChunks: ChunkResult[],
+    originalMatches: ChunkResult[]
+  ): SearchResult[] {
+    // Group chunks by document
+    const byDocument = new Map<number, ChunkResult[]>();
+    
+    allChunks.forEach(chunk => {
+      if (!byDocument.has(chunk.document_id)) {
+        byDocument.set(chunk.document_id, []);
+      }
+      byDocument.get(chunk.document_id)!.push(chunk);
+    });
+
+    // Merge continuous sequences within each document
+    const results: SearchResult[] = [];
+
+    byDocument.forEach((chunks, documentId) => {
+      // Sort by chunk_index
+      chunks.sort((a, b) => a.chunk_index - b.chunk_index);
+
+      // Find the best similarity score for this document (from original matches)
+      const bestMatch = originalMatches.find(m => m.document_id === documentId);
+      const score = bestMatch?.similarity || 0;
+
+      // Merge all chunks into single content (preserving order)
+      const mergedContent = chunks.map(c => c.chunk_text).join('\n\n');
+
+      // Use first chunk's metadata for result
+      const firstChunk = chunks[0];
+
+      results.push({
+        id: firstChunk.document_uuid,
+        title: firstChunk.document_title,
+        description: firstChunk.document_description,
+        content: mergedContent,
+        type: firstChunk.document_type,
+        score,
+        metadata: {
+          ...firstChunk.document_metadata,
+          chunk_count: chunks.length,
+          chunk_range: `${chunks[0].chunk_index}-${chunks[chunks.length - 1].chunk_index}`
+        }
+      });
+    });
+
+    // Sort by score (highest first)
+    return results.sort((a, b) => b.score - a.score);
   }
 
   private async generateEmbedding(text: string): Promise<number[] | null> {
@@ -506,7 +564,7 @@ export class KnowledgeBaseService {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            model: 'text-embedding-ada-002',
+            model: EMBEDDING_MODEL,
             input: text.substring(0, 8000) // Limit text length to avoid token limits
           }),
           signal: controller.signal
@@ -546,5 +604,61 @@ export class KnowledgeBaseService {
     }
     
     return null;
+  }
+
+  private async createChunksForDocument(documentId: number, content: string, documentTitle?: string): Promise<void> {
+    const chunkSize = parseInt(process.env.CHUNK_SIZE || '1000');
+    const chunkOverlap = parseInt(process.env.CHUNK_OVERLAP || '200');
+    const chunks = this.splitIntoChunks(content, chunkSize, chunkOverlap);
+    const processedAt = new Date().toISOString();
+
+    console.log(`Creating ${chunks.length} chunks for document...`);
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      
+      // Generate embedding from chunk text
+      const embedding = await this.generateEmbedding(chunk.text);
+      
+      if (embedding) {
+        const { data, error } = await this.supabase.rpc('vezlo_insert_knowledge_chunk', {
+          p_document_id: documentId,
+          p_chunk_text: chunk.text,
+          p_chunk_index: i,
+          p_start_char: chunk.startChar,
+          p_end_char: chunk.endChar,
+          p_token_count: Math.ceil(chunk.text.length / 4),
+          p_embedding: JSON.stringify(embedding),
+          p_processed_at: processedAt
+        });
+        
+        if (error) {
+          console.error(`❌ Failed to insert chunk ${i}:`, error);
+          throw new Error(`Failed to insert chunk: ${error.message}`);
+        }
+        
+        console.log(`✓ Inserted chunk ${i} (ID: ${data})`);
+      }
+    }
+  }
+
+  private splitIntoChunks(text: string, chunkSize: number, overlap: number): Array<{text: string; startChar: number; endChar: number}> {
+    const chunks: Array<{text: string; startChar: number; endChar: number}> = [];
+    let startChar = 0;
+
+    while (startChar < text.length) {
+      const endChar = Math.min(startChar + chunkSize, text.length);
+      const chunkText = text.substring(startChar, endChar);
+      
+      chunks.push({
+        text: chunkText,
+        startChar: startChar,
+        endChar: endChar
+      });
+
+      startChar += chunkSize - overlap;
+    }
+
+    return chunks;
   }
 }

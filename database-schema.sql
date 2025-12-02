@@ -42,6 +42,14 @@ INSERT INTO knex_migrations (name, batch, migration_time)
 SELECT '004_add_vector_search_rpc.ts', 1, NOW()
 WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '004_add_vector_search_rpc.ts');
 
+INSERT INTO knex_migrations (name, batch, migration_time) 
+SELECT '005_add_conversation_handoff_columns.ts', 1, NOW()
+WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '005_add_conversation_handoff_columns.ts');
+
+INSERT INTO knex_migrations (name, batch, migration_time) 
+SELECT '006_add_knowledge_chunks.ts', 1, NOW()
+WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '006_add_knowledge_chunks.ts');
+
 -- Set migration lock to unlocked (0 = unlocked, 1 = locked)
 INSERT INTO knex_migrations_lock (index, is_locked) 
 VALUES (1, 0)
@@ -159,9 +167,32 @@ CREATE TABLE IF NOT EXISTS vezlo_knowledge_items (
   file_size BIGINT, -- File size in bytes
   file_type TEXT, -- MIME type for files
   metadata JSONB DEFAULT '{}', -- Flexible metadata storage
-  embedding vector(1536), -- OpenAI embeddings for search
+  embedding vector(1536), -- OpenAI embeddings for search (legacy, not used with chunks)
   processed_at TIMESTAMPTZ, -- When embedding was generated
   created_by BIGINT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+-- ============================================================================
+-- KNOWLEDGE CHUNKS TABLE (Migration 006)
+-- ============================================================================
+-- This table stores text chunks from knowledge items with their embeddings.
+-- Each document can have multiple chunks for better semantic search on large content.
+-- Uses text-embedding-3-large model which produces 3072-dimensional vectors.
+
+CREATE TABLE IF NOT EXISTS vezlo_knowledge_chunks (
+  id BIGSERIAL PRIMARY KEY,
+  uuid UUID DEFAULT gen_random_uuid() UNIQUE NOT NULL,
+  document_id BIGINT NOT NULL REFERENCES vezlo_knowledge_items(id) ON DELETE CASCADE,
+  chunk_text TEXT NOT NULL,
+  chunk_index INTEGER NOT NULL,
+  start_char INTEGER,
+  end_char INTEGER,
+  token_count INTEGER,
+  embedding vector(3072), -- OpenAI text-embedding-3-large embeddings
+  metadata JSONB DEFAULT '{}',
+  processed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
@@ -269,14 +300,37 @@ CREATE INDEX IF NOT EXISTS idx_vezlo_knowledge_type ON vezlo_knowledge_items(typ
 CREATE INDEX IF NOT EXISTS idx_vezlo_knowledge_created_by ON vezlo_knowledge_items(created_by);
 CREATE INDEX IF NOT EXISTS idx_vezlo_knowledge_created_at ON vezlo_knowledge_items(created_at DESC);
 
+-- Knowledge chunks indexes (Migration 006)
+CREATE INDEX IF NOT EXISTS idx_vezlo_chunks_uuid ON vezlo_knowledge_chunks(uuid);
+CREATE INDEX IF NOT EXISTS idx_vezlo_chunks_document_id ON vezlo_knowledge_chunks(document_id);
+CREATE INDEX IF NOT EXISTS idx_vezlo_chunks_chunk_index ON vezlo_knowledge_chunks(document_id, chunk_index);
+
 -- Full-text search index for knowledge items
 CREATE INDEX IF NOT EXISTS idx_vezlo_knowledge_search
 ON vezlo_knowledge_items USING gin(to_tsvector('english', title || ' ' || COALESCE(description, '') || ' ' || COALESCE(content, '')));
 
--- Vector similarity index for semantic search (only for items with content)
+-- Vector similarity index for semantic search (only for items with content - legacy)
 CREATE INDEX IF NOT EXISTS idx_vezlo_knowledge_embedding
 ON vezlo_knowledge_items USING ivfflat (embedding vector_cosine_ops)
 WHERE embedding IS NOT NULL;
+
+-- Vector similarity index for chunks (Migration 006)
+-- HNSW index for 3072-dimensional vectors (text-embedding-3-large)
+-- Note: May fail on older pgvector versions, vector search will use sequential scan
+DO $$
+BEGIN
+  BEGIN
+    CREATE INDEX IF NOT EXISTS idx_vezlo_chunks_embedding 
+    ON vezlo_knowledge_chunks USING hnsw (embedding vector_cosine_ops)
+    WHERE embedding IS NOT NULL;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'HNSW index creation skipped: % (Vector search will use sequential scan)', SQLERRM;
+  END;
+END $$;
+
+-- GIN index for full-text keyword search on chunks (Migration 006)
+CREATE INDEX IF NOT EXISTS idx_vezlo_chunks_chunk_text_gin 
+ON vezlo_knowledge_chunks USING gin (to_tsvector('english', chunk_text));
 
 -- Sparse indexes for better performance
 -- Note: idx_vezlo_knowledge_content was removed in migration 003
@@ -299,6 +353,7 @@ ALTER TABLE vezlo_conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vezlo_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vezlo_message_feedback ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vezlo_knowledge_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vezlo_knowledge_chunks ENABLE ROW LEVEL SECURITY;
 
 -- Policies for service role access (full access)
 CREATE POLICY "Service role can access all users" ON vezlo_users
@@ -325,6 +380,9 @@ CREATE POLICY "Service role can access all feedback" ON vezlo_message_feedback
 CREATE POLICY "Service role can access all knowledge items" ON vezlo_knowledge_items
   FOR ALL USING (auth.role() = 'service_role');
 
+CREATE POLICY "Service role can access all knowledge chunks" ON vezlo_knowledge_chunks
+  FOR ALL USING (auth.role() = 'service_role');
+
 -- Example company-based policies (uncomment and modify as needed)
 -- CREATE POLICY "Users can access their company conversations" ON vezlo_conversations
 --   FOR ALL USING (company_id = auth.jwt() ->> 'company_id');
@@ -333,13 +391,120 @@ CREATE POLICY "Service role can access all knowledge items" ON vezlo_knowledge_i
 --   FOR ALL USING (company_id = auth.jwt() ->> 'company_id');
 
 -- ============================================================================
--- RPC FUNCTION FOR OPTIMIZED VECTOR SEARCH
+-- RPC FUNCTIONS FOR VECTOR SEARCH
 -- ============================================================================
 
--- This function uses pgvector's <=> operator for efficient nearest-neighbor search
--- directly in the database, avoiding the need to fetch all records and calculate
--- similarity in Node.js. This provides significant performance improvements,
--- especially for large knowledge bases.
+-- ============================================================================
+-- INSERT RPC FUNCTION FOR CHUNKS (Migration 006)
+-- ============================================================================
+-- Ensures embeddings are stored as proper vector(3072) type
+CREATE OR REPLACE FUNCTION vezlo_insert_knowledge_chunk(
+  p_document_id bigint,
+  p_chunk_text text,
+  p_chunk_index int,
+  p_start_char int,
+  p_end_char int,
+  p_token_count int,
+  p_embedding text,
+  p_processed_at timestamptz
+)
+RETURNS bigint
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  new_id bigint;
+BEGIN
+  INSERT INTO vezlo_knowledge_chunks (
+    document_id,
+    chunk_text,
+    chunk_index,
+    start_char,
+    end_char,
+    token_count,
+    embedding,
+    processed_at,
+    metadata
+  ) VALUES (
+    p_document_id,
+    p_chunk_text,
+    p_chunk_index,
+    p_start_char,
+    p_end_char,
+    p_token_count,
+    p_embedding::vector(3072),
+    p_processed_at,
+    '{}'::jsonb
+  )
+  RETURNING id INTO new_id;
+  
+  RETURN new_id;
+END;
+$$;
+
+-- ============================================================================
+-- CHUNK-BASED VECTOR SEARCH RPC FUNCTION (Migration 006)
+-- ============================================================================
+-- Searches through chunks and joins back to parent documents for metadata.
+-- Uses 3072-dimensional vectors for text-embedding-3-large.
+CREATE OR REPLACE FUNCTION vezlo_match_knowledge_chunks(
+  query_embedding text,
+  match_threshold float DEFAULT 0.5,
+  match_count int DEFAULT 10,
+  filter_company_id bigint DEFAULT NULL
+)
+RETURNS TABLE (
+  chunk_id bigint,
+  chunk_uuid uuid,
+  document_id bigint,
+  document_uuid uuid,
+  chunk_text text,
+  chunk_index int,
+  start_char int,
+  end_char int,
+  token_count int,
+  document_title text,
+  document_description text,
+  document_type text,
+  document_metadata jsonb,
+  chunk_metadata jsonb,
+  company_id bigint,
+  similarity float
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    c.id AS chunk_id,
+    c.uuid AS chunk_uuid,
+    c.document_id,
+    ki.uuid AS document_uuid,
+    c.chunk_text,
+    c.chunk_index,
+    c.start_char,
+    c.end_char,
+    c.token_count,
+    ki.title AS document_title,
+    ki.description AS document_description,
+    ki.type AS document_type,
+    ki.metadata AS document_metadata,
+    c.metadata AS chunk_metadata,
+    ki.company_id,
+    1 - (c.embedding <=> query_embedding::vector(3072)) AS similarity
+  FROM vezlo_knowledge_chunks c
+  INNER JOIN vezlo_knowledge_items ki ON c.document_id = ki.id
+  WHERE c.embedding IS NOT NULL
+    AND (filter_company_id IS NULL OR ki.company_id = filter_company_id)
+    AND (1 - (c.embedding <=> query_embedding::vector(3072))) >= match_threshold
+  ORDER BY c.embedding <=> query_embedding::vector(3072)
+  LIMIT match_count;
+END;
+$$;
+
+-- ============================================================================
+-- LEGACY RPC FUNCTION (Pre-Migration 006)
+-- ============================================================================
+-- This function searches the parent table directly (legacy, not used with chunks)
 CREATE OR REPLACE FUNCTION match_vezlo_knowledge(
   query_embedding vector(1536),
   match_threshold float DEFAULT 0.5,

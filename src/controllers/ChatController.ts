@@ -315,8 +315,6 @@ export class ChatController {
           
           const searchResults = await aiService.knowledgeBaseService.search(userMessageContent, {
             limit: 5,
-            threshold: 0.5, // Balanced precision/recall (0.5 is industry standard)
-            type: 'semantic', // Modern RAG best practice: semantic-only for better context
             company_id: companyId
           });
 
@@ -972,74 +970,37 @@ export class ChatController {
 
     logger.info(`🧾 Intent result: ${result.intent}${result.needsGuardrail ? ' (guardrail triggered)' : ''}`);
 
-    switch (result.intent) {
-      case 'greeting':
-        await this.respondWithAssistantMessage({
-          conversation,
-          conversationId,
-          parentMessageId: userMessage.id,
-          content: 'Hello! How can I help you today?'
-        }, res);
-        return true;
-      case 'personality':
-        // Get assistant name and organization from environment
-        const assistantName = process.env.ASSISTANT_NAME || 'AI Assistant';
-        const orgName = process.env.ORGANIZATION_NAME || 'Your Organization';
-        await this.respondWithAssistantMessage({
-          conversation,
-          conversationId,
-          parentMessageId: userMessage.id,
-          content: `I'm ${assistantName}, your AI assistant for ${orgName}. I help teams understand and work with the ${orgName} platform by answering questions about features, documentation, and technical details. How can I assist you today?`
-        }, res);
-        return true;
-      case 'clarification':
-        await this.respondWithAssistantMessage({
-          conversation,
-          conversationId,
-          parentMessageId: userMessage.id,
-          content: "I'm not sure I understood. Could you clarify what you need help with?"
-        }, res);
-        return true;
-      case 'guardrail':
-        await this.respondWithAssistantMessage({
-          conversation,
-          conversationId,
-          parentMessageId: userMessage.id,
-          content: `I can help with documentation or implementation guidance, but I can't share credentials or confidential configuration. Please contact your system administrator or support for access.`
-        }, res);
-        return true;
-      case 'human_support_email':
-        await this.respondWithAssistantMessage({
-          conversation,
-          conversationId,
-          parentMessageId: userMessage.id,
-          content: `Thanks for sharing your email. Our team will reach out soon—response times may vary depending on support volume.`
-        }, res);
-        logger.info('📨 Recorded human support email from user.');
-        return true;
-      case 'human_support_request':
-        if (result.contactEmail) {
-          await this.respondWithAssistantMessage({
-            conversation,
-            conversationId,
-            parentMessageId: userMessage.id,
-            content: `Thanks for sharing your email. Our team will reach out soon—response times may vary depending on support volume.`
-          }, res);
-          logger.info('📨 Human support request with email handled in a single step.');
-        } else {
-          await this.respondWithAssistantMessage({
-            conversation,
-            conversationId,
-            parentMessageId: userMessage.id,
-            content: 'I can connect you with a human teammate. Please share your email address so we can follow up.'
-          }, res);
-          logger.info('🙋 Human support requested; awaiting email from user.');
-        }
-        return true;
-      default:
-        logger.info('📚 Intent requires knowledge lookup; proceeding with RAG flow.');
-        return false;
+    // For non-knowledge intents, use LLM-generated response from intent classification
+    if (result.intent !== 'knowledge') {
+      const responseContent = result.response || this.getFallbackResponse(result.intent);
+      
+      await this.respondWithAssistantMessage({
+        conversation,
+        conversationId,
+        parentMessageId: userMessage.id,
+        content: responseContent
+      }, res);
+      return true;
     }
+
+    // Knowledge intent - proceed to RAG flow
+    logger.info('📚 Intent requires knowledge lookup; proceeding with RAG flow.');
+    return false;
+  }
+
+  private getFallbackResponse(intent: string): string {
+    // Fallback responses in case LLM doesn't generate one (shouldn't happen, but safety net)
+    const fallbacks: Record<string, string> = {
+      greeting: 'Hello! How can I help you today?',
+      acknowledgment: "You're welcome! Let me know if you need anything else.",
+      personality: `I'm ${process.env.ASSISTANT_NAME || 'AI Assistant'}, your AI assistant for ${process.env.ORGANIZATION_NAME || 'Your Organization'}.`,
+      clarification: "I'm not sure I understood. Could you clarify what you need help with?",
+      guardrail: "I can help with documentation or implementation guidance, but I can't share credentials or confidential configuration.",
+      human_support_request: "I'd be happy to connect you with our support team. Could you please provide your email address?",
+      human_support_email: "Thank you! Our support team will reach out to you shortly."
+    };
+    
+    return fallbacks[intent] || "I'm here to help. What would you like to know?";
   }
 
   private async respondWithAssistantMessage(

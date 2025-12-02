@@ -257,8 +257,6 @@ export class KnowledgeController {
 
       const results = await this.knowledgeBase.search(query, {
         limit: parseInt(limit as string),
-        threshold: parseFloat(threshold as string),
-        type: type as 'semantic' | 'keyword' | 'hybrid',
         company_id: companyId
       });
 
@@ -310,8 +308,6 @@ export class KnowledgeController {
       // Perform knowledge base search
       const searchResults = await this.knowledgeBase.search(query, {
         limit: 5,
-        threshold: 0.5, // Balanced precision/recall (0.5 is industry standard)
-        type: 'semantic', // Modern RAG best practice: semantic-only for better context
         company_id: companyId
       });
 
