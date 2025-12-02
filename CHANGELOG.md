@@ -24,11 +24,6 @@
 - Keyword search functionality
 - Hybrid search mode
 
-### Migration
-- Run `npm run migrate:latest` to upgrade
-- Run `npm run migrate:rollback` to revert to v2.2.2
-- Old `match_vezlo_knowledge` function restored on rollback
-
 ## [2.2.2] - 2025-11-28
 
 ### Added
