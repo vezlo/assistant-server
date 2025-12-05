@@ -45,7 +45,17 @@ const app = express();
 app.use(helmet({
   contentSecurityPolicy: false, // Vercel handles this
 }));
-app.use(compression());
+// Compression middleware - disable for SSE streams
+app.use(compression({
+  filter: (req, res) => {
+    // Don't compress Server-Sent Events
+    if (res.getHeader('Content-Type') === 'text/event-stream') {
+      return false;
+    }
+    // Use default compression filter for everything else
+    return compression.filter(req, res);
+  }
+}));
 app.use(cors({
   origin: globalConfig.cors.origins.length ? globalConfig.cors.origins : true,
   credentials: globalConfig.cors.credentials

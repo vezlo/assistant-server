@@ -179,6 +179,129 @@ The knowledge base contains curated content ingested through the src-to-kb pipel
     }
   }
 
+  /**
+   * Generate streaming response from OpenAI
+   * Returns an async generator that yields content chunks and final response
+   */
+  async *generateResponseStream(message: string, context?: ChatContext | any): AsyncGenerator<{ chunk: string; done: boolean; fullContent?: string }, void, unknown> {
+    try {
+      let knowledgeResults: string = '';
+      let hasKnowledgeContext = false;
+      
+      // Check if knowledge results are already provided in context
+      // If knowledgeResults is explicitly provided (even if empty string), it means search was already done
+      if (context?.knowledgeResults !== undefined) {
+        knowledgeResults = context.knowledgeResults || '';
+        // If knowledgeResults is non-empty, we have context; if empty string, search was done but no results
+        hasKnowledgeContext = knowledgeResults.length > 0;
+        logger.info(`📚 Using provided knowledge results: ${hasKnowledgeContext ? 'has context' : 'empty (search done, no results)'} - length: ${knowledgeResults.length} chars`);
+      } else if (this.knowledgeBaseService) {
+        // Only search if knowledgeResults was not provided (undefined)
+        // This means the caller hasn't done the search yet
+        const searchResults = await this.knowledgeBaseService.search(message, {
+          limit: 5
+        });
+
+        logger.info(`🔍 Knowledge base search returned ${searchResults.length} results`);
+
+        if (searchResults.length > 0) {
+          knowledgeResults = '\n\nRelevant information from knowledge base:\n';
+          searchResults.forEach(result => {
+            knowledgeResults += `- ${result.title}: ${result.content}\n`;
+          });
+          hasKnowledgeContext = true;
+          logger.info(`✅ Knowledge context prepared (${knowledgeResults.length} chars)`);
+        } else {
+          // Explicitly mark that search was done but no results found
+          knowledgeResults = '';
+          hasKnowledgeContext = false;
+          logger.info('⚠️  Search completed but no results found');
+        }
+      } else {
+        // No knowledge base service available
+        knowledgeResults = '';
+        hasKnowledgeContext = false;
+        logger.warn('⚠️  No knowledge base service available');
+      }
+
+      // Build system message with clear indication of knowledge base status
+      const systemContent = this.systemPrompt + 
+        (hasKnowledgeContext 
+          ? knowledgeResults 
+          : '\n\n⚠️ IMPORTANT: No relevant information was found in the knowledge base for this query. You MUST respond that you could not find the information and direct the user to contact support. Do NOT attempt to answer using your general knowledge.');
+
+      const messages: any[] = [
+        {
+          role: 'system',
+          content: systemContent
+        }
+      ];
+
+      if (context?.conversationHistory) {
+        messages.push(...context.conversationHistory.map((msg: any) => ({
+          role: msg.role,
+          content: msg.content
+        })));
+      }
+
+      messages.push({
+        role: 'user',
+        content: message
+      });
+
+      const modelToUse = this.config.model || 'gpt-4o-mini';
+      logger.info(`🤖 Generating streaming response using model: ${modelToUse}`);
+
+      const stream = await this.openai.chat.completions.create({
+        model: modelToUse,
+        messages,
+        temperature: this.config.temperature !== undefined ? this.config.temperature : 0.7,
+        max_tokens: this.config.maxTokens !== undefined ? this.config.maxTokens : 1000,
+        stream: true,
+      });
+
+      let fullContent = '';
+      let lastChunk: any = null;
+      let hasYieldedAny = false;
+      let chunkCount = 0;
+
+      logger.info('🔄 Starting OpenAI stream collection...');
+
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content || '';
+        chunkCount++;
+        
+        // If we have a previous chunk, yield it with done: false
+        if (lastChunk !== null) {
+          yield { chunk: lastChunk, done: false };
+          hasYieldedAny = true;
+        }
+        
+        // Store current chunk as last chunk
+        if (content) {
+          lastChunk = content;
+          fullContent += content;
+        }
+      }
+
+      logger.info(`🏁 OpenAI stream ended. Total chunks: ${chunkCount}, fullContent length: ${fullContent.length}`);
+
+      // Yield the LAST chunk with done: true
+      if (lastChunk !== null) {
+        logger.info(`📤 Yielding LAST chunk with done=true: "${lastChunk.substring(0, 30)}..."`);
+        yield { chunk: lastChunk, done: true, fullContent };
+      } else if (!hasYieldedAny) {
+        // Edge case: no content at all
+        logger.warn('⚠️  No content chunks received from OpenAI');
+        yield { chunk: '', done: true, fullContent: '' };
+      }
+
+    } catch (error) {
+      logger.error('AI Service Streaming Error:', error);
+      throw new Error('Failed to generate streaming AI response');
+    }
+  }
+
   private findRelevantLinks(message: string): NavigationLink[] {
     const relevantLinks: NavigationLink[] = [];
     const messageLower = message.toLowerCase();

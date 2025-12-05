@@ -293,89 +293,216 @@ export class ChatController {
         return;
       }
 
+      // Set up Server-Sent Events (SSE) headers for streaming (always stream, consistent format)
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+
       // Run intent classification to decide handling strategy
       const intentResult = await this.classifyIntent(userMessageContent, messages);
-      const handled = await this.handleIntentResult(intentResult, userMessage, conversationId, conversation, res);
-      if (handled) {
-        return;
-      }
+      const intentResponse = await this.handleIntentResult(intentResult, userMessage, conversationId, conversation);
 
-      // Get knowledge base search results if available
-      const aiService = (this.chatManager as any).aiService;
-      let knowledgeResults: string | null = null; // null = search done, no results; undefined = not searched yet
-      
-      // Get conversation to extract company_id for knowledge base search
-      // Note: profile.companyId and conversation.organizationId should contain integer IDs (as strings)
-      const companyIdRaw = (req as AuthenticatedRequest).profile?.companyId || conversation?.organizationId;
-      const companyId = companyIdRaw ? (typeof companyIdRaw === 'string' ? parseInt(companyIdRaw, 10) : companyIdRaw) : undefined;
-      
-      if (aiService && aiService.knowledgeBaseService) {
-        try {
-          logger.info(`🔍 Searching KB: query="${userMessageContent.substring(0, 50)}...", companyId=${companyId}`);
+      let accumulatedContent = '';
+      let assistantMessageId: string | undefined;
+
+      try {
+        // If intent returned a response (non-knowledge intent), stream it
+        if (intentResponse) {
+          logger.info(`📤 Streaming intent response for: ${intentResult.intent}`);
+          await this.streamTextContent(intentResponse, res);
+          accumulatedContent = intentResponse;
+        } else {
+          // Knowledge intent - proceed with RAG flow and stream AI response
+          logger.info('📚 Streaming knowledge-based response');
           
-          const searchResults = await aiService.knowledgeBaseService.search(userMessageContent, {
-            limit: 5,
-            company_id: companyId
+          // Get knowledge base search results if available
+          const aiService = (this.chatManager as any).aiService;
+          let knowledgeResults: string | null = null;
+          
+          // Get conversation to extract company_id for knowledge base search
+          const companyIdRaw = (req as AuthenticatedRequest).profile?.companyId || conversation?.organizationId;
+          const companyId = companyIdRaw ? (typeof companyIdRaw === 'string' ? parseInt(companyIdRaw, 10) : companyIdRaw) : undefined;
+          
+          if (aiService && aiService.knowledgeBaseService) {
+            try {
+              logger.info(`🔍 Searching KB: query="${userMessageContent.substring(0, 50)}...", companyId=${companyId}`);
+              
+              const searchResults = await aiService.knowledgeBaseService.search(userMessageContent, {
+                limit: 5,
+                company_id: companyId
+              });
+
+              logger.info(`📊 Found knowledge base results: ${searchResults.length}`);
+
+              if (searchResults.length > 0) {
+                knowledgeResults = '\n\nRelevant information from knowledge base:\n';
+                searchResults.forEach((result: any) => {
+                  const title = result.title || 'Untitled';
+                  const content = result.content || '';
+                  if (content.trim()) {
+                    knowledgeResults += `- ${title}: ${content}\n`;
+                  }
+                });
+                
+                // Verify we actually have meaningful content (not just the header)
+                const headerLength = '\n\nRelevant information from knowledge base:\n'.length;
+                if (knowledgeResults.length > headerLength + 10) {
+                  logger.info(`✅ Knowledge context prepared (${knowledgeResults.length} chars, ${searchResults.length} results)`);
+                  // Log first 200 chars for debugging
+                  logger.info(`📝 Knowledge preview: ${knowledgeResults.substring(0, 200)}...`);
+                } else {
+                  logger.warn(`⚠️  Knowledge results found but content is empty or too short (${knowledgeResults.length} chars), treating as no results`);
+                  knowledgeResults = '';
+                }
+              } else {
+                knowledgeResults = '';
+                logger.info('⚠️  No knowledge base results found; will return appropriate fallback response');
+              }
+            } catch (error) {
+              console.error('❌ Failed to search knowledge base:', error);
+              logger.error('Failed to search knowledge base:', error);
+              knowledgeResults = null;
+            }
+          } else {
+            logger.warn('⚠️  AI service or knowledge base service not available');
+          }
+          
+          // Build context for AI
+          const chatContext = {
+            conversationHistory: messages.map(msg => ({
+              role: msg.role as 'user' | 'assistant' | 'system',
+              content: msg.content
+            })),
+            knowledgeResults: knowledgeResults ?? undefined
+          };
+
+          // Stream response from OpenAI
+          logger.info('🔄 Starting OpenAI stream...');
+          const stream = aiService.generateResponseStream(userMessageContent, chatContext);
+          let chunkCount = 0;
+
+          for await (const { chunk, done, fullContent } of stream) {
+            chunkCount++;
+            
+            // Always send the chunk (even if empty with done flag)
+            const chunkData = JSON.stringify({
+              type: 'chunk',
+              content: chunk,
+              done: done || false // Include done flag
+            });
+            
+            res.write(`data: ${chunkData}\n\n`);
+            if (res.flush) res.flush();
+            
+            // Update accumulated content
+            if (chunk) {
+              accumulatedContent += chunk;
+            }
+            
+            // Log first and last chunks
+            if (chunkCount === 1) {
+              logger.info(`📤 First chunk sent: "${chunk.substring(0, 30)}..."`);
+            }
+            
+            if (done && fullContent) {
+              accumulatedContent = fullContent;
+              logger.info(`🏁 Stream complete: ${chunkCount} chunks sent, ${fullContent.length} total chars`);
+            }
+          }
+        }
+
+        // Save the message after streaming completes
+        try {
+          const assistantMessage = await this.saveAssistantMessage({
+            conversation,
+            conversationId,
+            parentMessageId: uuid,
+            content: accumulatedContent,
+            toolResults: []
           });
 
-          logger.info(`📊 Found knowledge base results: ${searchResults.length}`);
+          assistantMessageId = assistantMessage.id;
 
-          if (searchResults.length > 0) {
-            knowledgeResults = '\n\nRelevant information from knowledge base:\n';
-            searchResults.forEach((result: any) => {
-              knowledgeResults += `- ${result.title}: ${result.content}\n`;
-            });
-            logger.info('✅ Knowledge context prepared');
-          } else {
-            // Set to empty string to indicate search was done but no results found
-            knowledgeResults = '';
-            logger.info('⚠️  No knowledge base results found; will return appropriate fallback response');
-          }
-        } catch (error) {
-          console.error('❌ Failed to search knowledge base:', error);
-          logger.error('Failed to search knowledge base:', error);
-          // On error, set to null so AIService knows search was attempted
-          knowledgeResults = null;
+          // Send completion event with final message metadata (no content - already streamed)
+          const completionData = JSON.stringify({
+            type: 'completion',
+            uuid: assistantMessage.id,
+            parent_message_uuid: uuid,
+            status: 'completed',
+            created_at: assistantMessage.createdAt.toISOString()
+          });
+          res.write(`data: ${completionData}\n\n`);
+        } catch (saveError) {
+          logger.error('Failed to save assistant message:', saveError);
+          const errorData = JSON.stringify({
+            type: 'error',
+            error: 'Failed to save message',
+            message: saveError instanceof Error ? saveError.message : 'Unknown error'
+          });
+          res.write(`data: ${errorData}\n\n`);
         }
-      } else {
-        logger.warn('⚠️  AI service or knowledge base service not available');
+
+        // Close the stream
+        res.end();
+
+      } catch (streamError) {
+        logger.error('Streaming error:', streamError);
+        
+        // Try to send error to client if connection is still open
+        try {
+          const errorData = JSON.stringify({
+            type: 'error',
+            error: 'Failed to generate response',
+            message: streamError instanceof Error ? streamError.message : 'Unknown error'
+          });
+          res.write(`data: ${errorData}\n\n`);
+          res.end();
+        } catch (writeError) {
+          logger.error('Failed to send error to client:', writeError);
+          res.end();
+        }
+
+        // If we have accumulated content but failed to save, try to save it
+        if (accumulatedContent && !assistantMessageId) {
+          try {
+            await this.saveAssistantMessage({
+              conversation,
+              conversationId,
+              parentMessageId: uuid,
+              content: accumulatedContent,
+              toolResults: []
+            });
+          } catch (saveError) {
+            logger.error('Failed to save partial message after stream error:', saveError);
+          }
+        }
       }
-      
-      // Build context for AI
-      const chatContext = {
-        conversationHistory: messages.map(msg => ({
-          role: msg.role as 'user' | 'assistant' | 'system',
-          content: msg.content
-        })),
-        knowledgeResults: knowledgeResults ?? undefined // Convert null to undefined for cleaner check
-      };
-
-      // Generate AI response using the actual user message content
-      const response = await aiService.generateResponse(userMessageContent, chatContext);
-
-      const assistantMessage = await this.saveAssistantMessage({
-        conversation,
-        conversationId,
-        parentMessageId: uuid,
-        content: response.content,
-        toolResults: response.toolResults
-      });
-
-      res.json({
-        uuid: assistantMessage.id,
-        parent_message_uuid: uuid,
-        type: 'assistant',
-        content: response.content,
-        status: 'completed',
-        created_at: assistantMessage.createdAt.toISOString()
-      });
 
     } catch (error) {
       logger.error('Generate response error:', error);
-      res.status(500).json({
-        error: 'Failed to generate response',
-        message: error instanceof Error ? error.message : 'Unknown error'
-      });
+      
+      // If headers haven't been sent yet, send JSON error
+      if (!res.headersSent) {
+        res.status(500).json({
+          error: 'Failed to generate response',
+          message: error instanceof Error ? error.message : 'Unknown error'
+        });
+      } else {
+        // Headers already sent, try to send SSE error
+        try {
+          const errorData = JSON.stringify({
+            type: 'error',
+            error: 'Failed to generate response',
+            message: error instanceof Error ? error.message : 'Unknown error'
+          });
+          res.write(`data: ${errorData}\n\n`);
+          res.end();
+        } catch (writeError) {
+          logger.error('Failed to send error to client:', writeError);
+          res.end();
+        }
+      }
     }
   }
 
@@ -951,41 +1078,63 @@ export class ChatController {
     });
   }
 
+  /**
+   * Handle intent classification result
+   * Returns response content if non-knowledge intent, null if knowledge intent
+   */
   private async handleIntentResult(
     result: IntentClassificationResult,
     userMessage: StoredChatMessage,
     conversationId: string,
-    conversation: ChatConversation | null,
-    res: Response
-  ): Promise<boolean> {
+    conversation: ChatConversation | null
+  ): Promise<string | null> {
     if (result.needsGuardrail && result.intent !== 'guardrail') {
-      await this.respondWithAssistantMessage({
-        conversation,
-        conversationId,
-        parentMessageId: userMessage.id,
-        content: `I can help with documentation or implementation guidance, but I can't share credentials or confidential configuration. Please contact your system administrator or support for access.`
-      }, res);
-      return true;
+      logger.info('🛡️ Guardrail triggered');
+      return `I can help with documentation or implementation guidance, but I can't share credentials or confidential configuration. Please contact your system administrator or support for access.`;
     }
 
     logger.info(`🧾 Intent result: ${result.intent}${result.needsGuardrail ? ' (guardrail triggered)' : ''}`);
 
-    // For non-knowledge intents, use LLM-generated response from intent classification
+    // For non-knowledge intents, return the response content to be streamed
     if (result.intent !== 'knowledge') {
       const responseContent = result.response || this.getFallbackResponse(result.intent);
-      
-      await this.respondWithAssistantMessage({
-        conversation,
-        conversationId,
-        parentMessageId: userMessage.id,
-        content: responseContent
-      }, res);
-      return true;
+      return responseContent;
     }
 
-    // Knowledge intent - proceed to RAG flow
+    // Knowledge intent - proceed to RAG flow (return null to indicate streaming will happen later)
     logger.info('📚 Intent requires knowledge lookup; proceeding with RAG flow.');
-    return false;
+    return null;
+  }
+
+  /**
+   * Stream text content word by word to simulate streaming
+   * This ensures consistent SSE format for all responses
+   */
+  private async streamTextContent(content: string, res: Response): Promise<void> {
+    const words = content.split(' ');
+    const chunkSize = 2; // Stream 2 words at a time for smoother experience
+    const totalChunks = Math.ceil(words.length / chunkSize);
+    
+    for (let i = 0; i < words.length; i += chunkSize) {
+      const chunk = words.slice(i, i + chunkSize).join(' ') + (i + chunkSize < words.length ? ' ' : '');
+      const chunkIndex = Math.floor(i / chunkSize) + 1;
+      const isLastChunk = chunkIndex === totalChunks;
+      
+      const chunkData = JSON.stringify({
+        type: 'chunk',
+        content: chunk,
+        done: isLastChunk // Mark last chunk with done: true
+      });
+      res.write(`data: ${chunkData}\n\n`);
+      
+      // Flush the response to ensure chunks are sent immediately
+      if (res.flush) {
+        res.flush();
+      }
+      
+      // Delay for smooth streaming effect (30ms for better visibility)
+      await new Promise(resolve => setTimeout(resolve, 30));
+    }
   }
 
   private getFallbackResponse(intent: string): string {
