@@ -89,7 +89,7 @@ export const defaultConfig: GlobalConfig = {
   api: {
     prefix: '/api',
     version: 'v1',
-    timeout: 30000, // 30 seconds
+    timeout: 60000, // 60 seconds (matches Vercel Pro plan limit)
     rateLimiting: {
       windowMs: parseInt(process.env.RATE_LIMIT_WINDOW || '900000'), // Default 15 minutes
       maxRequests: parseInt(process.env.RATE_LIMIT_MAX || '100') // per window

@@ -1375,6 +1375,10 @@ async function start() {
     // Setup routes after services are initialized
     setupRoutes();
 
+    // Set server timeout from global config (60 seconds)
+    server.timeout = globalConfig.api.timeout;
+    logger.info(`⏱️  Server timeout set to ${globalConfig.api.timeout / 1000}s`);
+
     server.listen(PORT, '0.0.0.0', () => {
       logger.info(`🚀 AI Assistant API v1.0.0 running on port ${PORT}`);
       logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);

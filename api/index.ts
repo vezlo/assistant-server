@@ -37,6 +37,8 @@ config();
 const publicPath = path.join(process.cwd(), 'public');
 
 // Initialize Express app (shared across invocations)
+// Note: Timeout is controlled by Vercel's maxDuration in vercel.json (60s for Pro plan)
+// This matches globalConfig.api.timeout (60000ms)
 const app = express();
 
 // Middleware
