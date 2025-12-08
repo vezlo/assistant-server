@@ -50,6 +50,10 @@ INSERT INTO knex_migrations (name, batch, migration_time)
 SELECT '006_add_knowledge_chunks.ts', 1, NOW()
 WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '006_add_knowledge_chunks.ts');
 
+INSERT INTO knex_migrations (name, batch, migration_time) 
+SELECT '007_add_updated_at_to_feedback.ts', 1, NOW()
+WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '007_add_updated_at_to_feedback.ts');
+
 -- Set migration lock to unlocked (0 = unlocked, 1 = locked)
 INSERT INTO knex_migrations_lock (index, is_locked) 
 VALUES (1, 0)

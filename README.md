@@ -425,7 +425,8 @@ npm run migrate:make add_users_table
 - `POST /api/knowledge/search` - Search knowledge base
 
 #### Feedback
-- `POST /api/feedback` - Submit message feedback
+- `POST /api/feedback` - Submit message feedback (Public API)
+- `DELETE /api/feedback/:uuid` - Delete/undo message feedback (Public API)
 
 ### WebSocket Events
 - `join-conversation` - Join conversation room
@@ -717,4 +718,4 @@ This project is dual-licensed:
 
 ---
 
-**Status**: ✅ Production Ready | **Version**: 2.2.1 | **Node.js**: 20+ | **TypeScript**: 5+
+**Status**: ✅ Production Ready | **Version**: 2.4.0 | **Node.js**: 20+ | **TypeScript**: 5+

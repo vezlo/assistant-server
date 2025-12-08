@@ -1,3 +1,21 @@
+## [2.4.0] - 2025-12-05
+
+### Added
+- Server-Sent Events (SSE) streaming for all AI responses (intent-based and knowledge-based)
+- Feedback API: `DELETE /api/feedback/:uuid` for undoing feedback (Public API)
+- `updated_at` column in `vezlo_message_feedback` table (Migration 007)
+
+### Changed
+- `POST /api/messages/:uuid/generate` now streams responses via SSE instead of returning full JSON
+- Feedback APIs (`POST /api/feedback`, `DELETE /api/feedback/:uuid`) are now public (no authentication required)
+- API timeout increased to 60 seconds (matches Vercel Pro plan limit)
+- Compression middleware now skips `text/event-stream` responses to prevent SSE buffering
+
+### Fixed
+- Frontend UI "jerk" issue when streaming completes
+- Knowledge base queries now properly stream responses
+- Message UUID race condition in feedback system resolved
+
 ## [2.3.0] - 2025-12-02
 
 ### Breaking Changes
