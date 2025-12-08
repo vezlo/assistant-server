@@ -682,11 +682,9 @@ app.post('/api/messages/:uuid/generate', (req, res) => chatController.generateRe
  * @swagger
  * /api/feedback:
  *   post:
- *     summary: Submit message feedback
- *     description: Submit feedback for a specific message
+ *     summary: Submit message feedback (Public API)
+ *     description: Submit feedback for a specific message. No authentication required.
  *     tags: [Chat]
- *     security:
- *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -702,12 +700,36 @@ app.post('/api/messages/:uuid/generate', (req, res) => chatController.generateRe
  *               $ref: '#/components/schemas/SubmitFeedbackResponse'
  *       400:
  *         description: Invalid request
- *       401:
- *         description: Not authenticated
  *       500:
  *         description: Internal server error
  */
-app.post('/api/feedback', authenticateUser(supabase), (req, res) => chatController.submitFeedback(req, res));
+app.post('/api/feedback', (req, res) => chatController.submitFeedback(req, res));
+
+/**
+ * @swagger
+ * /api/feedback/{uuid}:
+ *   delete:
+ *     summary: Delete/undo message feedback (Public API)
+ *     description: Delete feedback for a specific message (undo action). No authentication required.
+ *     tags: [Chat]
+ *     parameters:
+ *       - in: path
+ *         name: uuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Feedback UUID
+ *     responses:
+ *       200:
+ *         description: Feedback deleted successfully
+ *       400:
+ *         description: Invalid request
+ *       404:
+ *         description: Feedback not found
+ *       500:
+ *         description: Internal server error
+ */
+app.delete('/api/feedback/:uuid', (req, res) => chatController.deleteFeedback(req, res));
 
 // Knowledge Base API Routes
 /**

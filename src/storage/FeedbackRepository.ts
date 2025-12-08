@@ -132,6 +132,37 @@ export class FeedbackRepository {
     return (data || []).map(row => this.rowToFeedback(row));
   }
 
+  async getFeedbackByMessageAndUser(messageId: string, userId: string): Promise<Feedback | null> {
+    const tableName = this.getTableName('message_feedback');
+    
+    // Get message internal ID from UUID
+    const messageQuery = await this.supabase
+      .from(this.getTableName('messages'))
+      .select('id')
+      .eq('uuid', messageId)
+      .single();
+      
+    if (messageQuery.error) {
+      throw new Error(`Failed to find message: ${messageQuery.error.message}`);
+    }
+
+    const { data, error } = await this.supabase
+      .from(tableName)
+      .select('*, ' + this.getTableName('messages') + '!inner(uuid)')
+      .eq('message_id', messageQuery.data.id)
+      .eq('user_id', parseInt(userId) || 1)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return null; // Not found
+      throw new Error(`Failed to get feedback: ${error.message}`);
+    }
+
+    return this.rowToFeedback(data);
+  }
+
   async deleteFeedback(feedbackId: string): Promise<boolean> {
     const tableName = this.getTableName('message_feedback');
     

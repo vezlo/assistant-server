@@ -147,7 +147,8 @@ CREATE TABLE IF NOT EXISTS vezlo_message_feedback (
   category TEXT,
   comment TEXT,
   suggested_improvement TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW() -- Added in migration 007
 );
 
 -- ============================================================================

@@ -1004,18 +1004,13 @@ export class ChatController {
     }
   }
 
-  // Submit message feedback
-  async submitFeedback(req: AuthenticatedRequest, res: Response): Promise<void> {
+  // Submit message feedback (create or update) - Public API
+  async submitFeedback(req: Request | AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { message_uuid, rating, category, comment, suggested_improvement } = req.body;
 
       if (!message_uuid || !rating) {
         res.status(400).json({ error: 'message_uuid and rating are required' });
-        return;
-      }
-
-      if (!req.profile) {
-        res.status(401).json({ error: 'Authentication required' });
         return;
       }
 
@@ -1026,15 +1021,22 @@ export class ChatController {
         return;
       }
 
+      // Use authenticated user ID if available, otherwise use default anonymous user (1)
+      const userId = (req as AuthenticatedRequest).user?.id?.toString() || '1';
+
+      // Check if feedback already exists for this message and user
+      const existingFeedback = await this.storage.getFeedbackByMessageAndUser(message_uuid, userId);
+
       const feedback = await this.storage.saveFeedback({
+        id: existingFeedback?.id, // Include ID if exists (will update instead of create)
         messageId: message_uuid,
         conversationId: message.conversationId,
-        userId: req.user!.id,
+        userId,
         rating,
         category,
         comment,
         suggestedImprovement: suggested_improvement,
-        createdAt: new Date()
+        createdAt: existingFeedback?.createdAt || new Date()
       });
 
       res.json({
@@ -1054,6 +1056,41 @@ export class ChatController {
       logger.error('Submit feedback error:', error);
       res.status(500).json({
         error: 'Failed to submit feedback',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  // Delete/undo message feedback - Public API
+  async deleteFeedback(req: Request | AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { uuid } = req.params;
+
+      if (!uuid) {
+        res.status(400).json({ error: 'Feedback UUID is required' });
+        return;
+      }
+
+      // Verify feedback exists
+      const feedback = await this.storage.getFeedbackById(uuid);
+      if (!feedback) {
+        res.status(404).json({ error: 'Feedback not found' });
+        return;
+      }
+
+      // For public API, allow deletion by UUID only (no user verification)
+      // This is acceptable since feedback UUIDs are unique and not easily guessable
+      await this.storage.deleteFeedback(uuid);
+
+      res.json({
+        success: true,
+        message: 'Feedback deleted successfully'
+      });
+
+    } catch (error) {
+      logger.error('Delete feedback error:', error);
+      res.status(500).json({
+        error: 'Failed to delete feedback',
         message: error instanceof Error ? error.message : 'Unknown error'
       });
     }

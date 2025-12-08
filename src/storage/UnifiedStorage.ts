@@ -103,6 +103,10 @@ export class UnifiedStorage implements ChatStorage {
     return this.feedback.getUserFeedback(userId, limit, offset);
   }
 
+  async getFeedbackByMessageAndUser(messageId: string, userId: string): Promise<Feedback | null> {
+    return this.feedback.getFeedbackByMessageAndUser(messageId, userId);
+  }
+
   async deleteFeedback(feedbackId: string): Promise<boolean> {
     return this.feedback.deleteFeedback(feedbackId);
   }
