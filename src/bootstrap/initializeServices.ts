@@ -9,6 +9,8 @@ import { KnowledgeController } from '../controllers/KnowledgeController';
 import { AuthController } from '../controllers/AuthController';
 import { ApiKeyService } from '../services/ApiKeyService';
 import { ApiKeyController } from '../controllers/ApiKeyController';
+import { CompanyService } from '../services/CompanyService';
+import { CompanyController } from '../controllers/CompanyController';
 import { IntentService } from '../services/IntentService';
 import { RealtimePublisher } from '../services/RealtimePublisher';
 
@@ -27,12 +29,14 @@ export interface InitializedCoreServices {
     aiService: AIService;
     chatManager: ChatManager;
     apiKeyService: ApiKeyService;
+    companyService: CompanyService;
   };
   controllers: {
     chatController: ChatController;
     knowledgeController: KnowledgeController;
     authController: AuthController;
     apiKeyController: ApiKeyController;
+    companyController: CompanyController;
   };
   config: {
     chatHistoryLength: number;
@@ -144,6 +148,8 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
   const authController = new AuthController(supabase);
   const apiKeyService = new ApiKeyService(supabase);
   const apiKeyController = new ApiKeyController(apiKeyService);
+  const companyService = new CompanyService(storage.company);
+  const companyController = new CompanyController(companyService);
 
   return {
     services: {
@@ -151,18 +157,18 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
       knowledgeBase,
       aiService,
       chatManager,
-      apiKeyService
+      apiKeyService,
+      companyService
     },
     controllers: {
       chatController,
       knowledgeController,
       authController,
-      apiKeyController
+      apiKeyController,
+      companyController
     },
     config: {
       chatHistoryLength: resolvedHistoryLength
     }
   };
 }
-
-

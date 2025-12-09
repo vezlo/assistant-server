@@ -145,6 +145,7 @@ export interface Feedback {
   comment?: string;
   suggestedImprovement?: string;
   createdAt: Date;
+  companyId?: string;
 }
 
 export interface ChatManagerConfig {
@@ -199,6 +200,25 @@ export interface KnowledgeDocument {
   embeddings?: number[];
   lastModified: Date;
   source: string;
+}
+
+export interface CompanyAnalytics {
+  conversations: {
+    total: number;
+    open: number;
+    closed: number;
+  };
+  users: {
+    total_active_users: number;
+  };
+  messages: {
+    user_messages_total: number;
+  };
+  feedback: {
+    total: number;
+    likes: number;
+    dislikes: number;
+  };
 }
 
 

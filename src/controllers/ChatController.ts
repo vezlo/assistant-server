@@ -1021,6 +1021,12 @@ export class ChatController {
         return;
       }
 
+      const conversation = await this.storage.getConversation(message.conversationId);
+      if (!conversation) {
+        res.status(404).json({ error: 'Conversation not found for message' });
+        return;
+      }
+
       // Use authenticated user ID if available, otherwise use default anonymous user (1)
       const userId = (req as AuthenticatedRequest).user?.id?.toString() || '1';
 
@@ -1036,7 +1042,8 @@ export class ChatController {
         category,
         comment,
         suggestedImprovement: suggested_improvement,
-        createdAt: existingFeedback?.createdAt || new Date()
+        createdAt: existingFeedback?.createdAt || new Date(),
+        companyId: conversation.organizationId
       });
 
       res.json({

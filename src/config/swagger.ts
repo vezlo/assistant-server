@@ -188,6 +188,7 @@ export const swaggerUiOptions = {
     defaultModelsExpandDepth: 2,
     defaultModelExpandDepth: 2,
     displayOperationId: false,
-    displayRequestDuration: true
+    displayRequestDuration: true,
+    persistAuthorization: true
   }
 };

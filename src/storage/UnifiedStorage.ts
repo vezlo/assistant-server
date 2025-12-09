@@ -10,6 +10,7 @@ import {
 import { ConversationRepository } from './ConversationRepository';
 import { MessageRepository } from './MessageRepository';
 import { FeedbackRepository } from './FeedbackRepository';
+import { CompanyRepository } from './CompanyRepository';
 
 /**
  * Unified Storage Class
@@ -20,6 +21,7 @@ export class UnifiedStorage implements ChatStorage {
   public conversations: ConversationRepository;
   public messages: MessageRepository;
   public feedback: FeedbackRepository;
+  public company: CompanyRepository;
 
   constructor(
     supabase: SupabaseClient,
@@ -28,6 +30,7 @@ export class UnifiedStorage implements ChatStorage {
     this.conversations = new ConversationRepository(supabase, tablePrefix);
     this.messages = new MessageRepository(supabase, tablePrefix);
     this.feedback = new FeedbackRepository(supabase, tablePrefix);
+    this.company = new CompanyRepository(supabase, tablePrefix);
   }
 
   // ============================================================================

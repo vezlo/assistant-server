@@ -31,7 +31,7 @@ export class FeedbackRepository {
         .eq('uuid', feedback.id)
         .select()
         .single();
-
+        
       if (error) throw new Error(`Failed to update feedback: ${error.message}`);
       return this.rowToFeedback(data);
     } else {
@@ -53,7 +53,8 @@ export class FeedbackRepository {
           category: feedback.category,
           comment: feedback.comment,
           suggested_improvement: feedback.suggestedImprovement,
-          created_at: feedback.createdAt?.toISOString() || new Date().toISOString()
+          created_at: feedback.createdAt?.toISOString() || new Date().toISOString(),
+          company_id: feedback.companyId
         })
         .select()
         .single();
