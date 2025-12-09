@@ -15,6 +15,7 @@ import { ChatController } from './controllers/ChatController';
 import { KnowledgeController } from './controllers/KnowledgeController';
 import { AuthController } from './controllers/AuthController';
 import { ApiKeyController } from './controllers/ApiKeyController';
+import { CompanyController } from './controllers/CompanyController';
 import { runMigrations, getMigrationStatus } from './config/knex';
 import { createClient } from '@supabase/supabase-js';
 import { initializeCoreServices } from './bootstrap/initializeServices';
@@ -88,6 +89,7 @@ let chatController: ChatController;
 let knowledgeController: KnowledgeController;
 let authController: AuthController;
 let apiKeyController: ApiKeyController;
+let companyController: CompanyController;
 
 async function initializeServices() {
   try {
@@ -104,6 +106,7 @@ async function initializeServices() {
     authController = controllers.authController;
     authController.setRealtimePublisher(realtimePublisher);
     apiKeyController = controllers.apiKeyController;
+    companyController = controllers.companyController;
 
     logger.info('All services initialized successfully');
   } catch (error) {
@@ -298,6 +301,62 @@ app.post('/api/api-keys', authenticateUser(supabase), (req, res) => apiKeyContro
  *         description: Internal server error
  */
 app.get('/api/api-keys/status', authenticateUser(supabase), (req, res) => apiKeyController.getApiKeyStatus(req, res));
+
+  /**
+   * @swagger
+   * /api/company/analytics:
+   *   get:
+   *     summary: Get company analytics
+   *     description: Returns analytics data for the authenticated company including conversation stats, user counts, message volume, and feedback.
+   *     tags: [Company]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Analytics data retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 conversations:
+   *                   type: object
+   *                   properties:
+   *                     total:
+   *                       type: integer
+   *                     open:
+   *                       type: integer
+   *                     closed:
+   *                       type: integer
+   *                 users:
+   *                   type: object
+   *                   properties:
+   *                     total_active_users:
+   *                       type: integer
+   *                     assistants:
+   *                       type: integer
+   *                     agents:
+   *                       type: integer
+   *                 messages:
+   *                   type: object
+   *                   properties:
+   *                     user_messages_total:
+   *                       type: integer
+   *                 feedback:
+   *                   type: object
+   *                   properties:
+   *                     total:
+   *                       type: integer
+   *                     likes:
+   *                       type: integer
+   *                     dislikes:
+   *                       type: integer
+   *       401:
+   *         description: Not authenticated
+   *       500:
+   *         description: Internal server error
+   */
+  app.get('/api/company/analytics', authenticateUser(supabase), (req, res) => companyController.getAnalytics(req, res));
 
 // Chat API Routes
 /**
