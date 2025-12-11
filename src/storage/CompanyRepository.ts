@@ -98,5 +98,25 @@ export class CompanyRepository {
       dislikes: Number(data.dislikes) || 0
     };
   }
+
+  async getCompany(companyId: string | number) {
+    const { data, error } = await this.supabase
+      .from(this.getTableName('companies'))
+      .select('*')
+      .eq('id', companyId)
+      .single();
+
+    if (error) throw new Error(`Failed to fetch company: ${error.message}`);
+    return data;
+  }
+
+  async updateCompany(companyId: string | number, company: { response_mode: string }) {
+    const { error } = await this.supabase
+      .from(this.getTableName('companies'))
+      .update(company)
+      .eq('id', companyId);
+
+    if (error) throw new Error(`Failed to update company: ${error.message}`);
+  }
 }
 

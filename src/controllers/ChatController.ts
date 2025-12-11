@@ -7,12 +7,15 @@ import logger from '../config/logger';
 import { IntentService, IntentClassificationResult } from '../services/IntentService';
 import { ChatConversation, ChatMessage, StoredChatMessage } from '../types';
 import { RealtimePublisher } from '../services/RealtimePublisher';
+import { RESPONSE_MODES, ResponseMode } from '../config/responseModes';
+import { CompanyService } from '../services/CompanyService';
 
 export class ChatController {
   private chatManager: ChatManager;
   private storage: UnifiedStorage;
   private supabase: SupabaseClient;
   private chatHistoryLength: number;
+  private companyService: CompanyService;
   private intentService?: IntentService;
   private realtimePublisher?: RealtimePublisher;
 
@@ -20,6 +23,7 @@ export class ChatController {
     chatManager: ChatManager,
     storage: UnifiedStorage,
     supabase: SupabaseClient,
+    companyService: CompanyService,
     options: { historyLength?: number; intentService?: IntentService; realtimePublisher?: RealtimePublisher } = {}
   ) {
     this.chatManager = chatManager;
@@ -29,6 +33,7 @@ export class ChatController {
     this.chatHistoryLength = typeof historyLength === 'number' && historyLength > 0 ? historyLength : 2;
     this.intentService = options.intentService;
     this.realtimePublisher = options.realtimePublisher;
+    this.companyService = companyService;
   }
 
   // Create a new conversation
@@ -299,8 +304,18 @@ export class ChatController {
       res.setHeader('Connection', 'keep-alive');
       res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
 
+      // Get company settings for response mode
+      let responseMode: ResponseMode = RESPONSE_MODES.USER;
+      const companyId = (req as AuthenticatedRequest).profile?.companyId;
+      if (companyId) {
+        const company = await this.companyService.getCompany(companyId);
+        if (company?.response_mode) {
+          responseMode = company.response_mode as ResponseMode;
+        }
+      }
+
       // Run intent classification to decide handling strategy
-      const intentResult = await this.classifyIntent(userMessageContent, messages);
+      const intentResult = await this.classifyIntent(userMessageContent, messages, responseMode);
       const intentResponse = await this.handleIntentResult(intentResult, userMessage, conversationId, conversation);
 
       let accumulatedContent = '';
@@ -318,6 +333,7 @@ export class ChatController {
           
           // Get knowledge base search results if available
           const aiService = (this.chatManager as any).aiService;
+          aiService.setResponseMode(responseMode);
           let knowledgeResults: string | null = null;
           
           // Get conversation to extract company_id for knowledge base search
@@ -374,7 +390,8 @@ export class ChatController {
               role: msg.role as 'user' | 'assistant' | 'system',
               content: msg.content
             })),
-            knowledgeResults: knowledgeResults ?? undefined
+            knowledgeResults: knowledgeResults ?? undefined,
+            responseMode
           };
 
           // Stream response from OpenAI
@@ -1103,7 +1120,7 @@ export class ChatController {
     }
   }
 
-  private async classifyIntent(message: string, history: ChatMessage[]): Promise<IntentClassificationResult> {
+  private async classifyIntent(message: string, history: ChatMessage[], responseMode: ResponseMode = RESPONSE_MODES.USER): Promise<IntentClassificationResult> {
     if (!this.intentService) {
       return {
         intent: 'knowledge',
@@ -1118,7 +1135,8 @@ export class ChatController {
 
     return this.intentService.classify({
       message,
-      conversationHistory: resolvedHistory
+      conversationHistory: resolvedHistory,
+      responseMode
     });
   }
 

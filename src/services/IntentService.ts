@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { ChatMessage } from '../types';
 import logger from '../config/logger';
+import { ResponseMode, RESPONSE_MODE_INSTRUCTIONS, RESPONSE_MODES } from '../config/responseModes';
 
 type IntentLabel =
   | 'knowledge'
@@ -30,6 +31,7 @@ export interface IntentClassificationResult {
 interface ClassificationInput {
   message: string;
   conversationHistory?: ChatMessage[];
+  responseMode?: ResponseMode;
 }
 
 export class IntentService {
@@ -87,6 +89,12 @@ export class IntentService {
     // Use all provided history (already limited by CHAT_HISTORY_LENGTH in ChatController)
     // No need to trim further - respect the configured limit
 
+    const responseMode = input.responseMode || RESPONSE_MODES.DEVELOPER;
+    let modeInstructions = '';
+    if (responseMode === RESPONSE_MODES.USER) {
+      modeInstructions = "\n" + RESPONSE_MODE_INSTRUCTIONS[responseMode];
+    }
+
     const systemMessage: OpenAI.Chat.Completions.ChatCompletionMessageParam = {
       role: 'system',
       content: `You are an intent classifier for ${this.assistantName}, the AI assistant for ${this.organizationName}. 
@@ -98,6 +106,7 @@ Return a JSON object with:
 - response: a natural, contextual assistant response appropriate for this intent (ONLY for non-knowledge intents; leave empty for "knowledge")
 - needs_guardrail: true if the user is requesting sensitive credentials or configuration
 - contact_email: email address provided by the user, if present, otherwise null
+
 
 Definitions:
 - "knowledge": ANY question, query, or request about the platform, product, documentation, technical details, features, usage, troubleshooting, or any topic that could potentially be in the knowledge base. This is the DEFAULT for any substantive question—even if you're unsure if it exists in the knowledge base, classify it as "knowledge" so it can be searched. Also includes follow-up questions like "what about X?", "can you explain more?", or topic expansions.
@@ -131,7 +140,10 @@ Response Generation Guidelines:
 - For "guardrail": professionally decline and redirect
 - For "human_support_request": explain support options and ask for contact email
 - For "human_support_email": confirm receipt and set expectations
-- Keep responses concise, professional, and helpful`
+- Keep responses concise, professional, and helpful
+${modeInstructions}
+`
+
     };
 
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [systemMessage];

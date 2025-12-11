@@ -119,6 +119,7 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
   });
 
   // Use same AI_MODEL for intent classification
+  const companyService = new CompanyService(storage.company);
   const intentService = new IntentService({
     openaiApiKey: process.env.OPENAI_API_KEY!,
     model: aiModel,
@@ -138,7 +139,7 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
     logger.warn('⚠️  Realtime publisher not initialized (missing SUPABASE_URL or SUPABASE_SERVICE_KEY)');
   }
 
-  const chatController = new ChatController(chatManager, storage, supabase, {
+  const chatController = new ChatController(chatManager, storage, supabase, companyService, {
     historyLength: resolvedHistoryLength,
     intentService,
     realtimePublisher
@@ -148,7 +149,6 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
   const authController = new AuthController(supabase);
   const apiKeyService = new ApiKeyService(supabase);
   const apiKeyController = new ApiKeyController(apiKeyService);
-  const companyService = new CompanyService(storage.company);
   const companyController = new CompanyController(companyService);
 
   return {

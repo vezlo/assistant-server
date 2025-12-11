@@ -8,6 +8,7 @@ import {
 } from '../types';
 import { KnowledgeBaseService } from './KnowledgeBaseService';
 import logger from '../config/logger';
+import { RESPONSE_MODE_INSTRUCTIONS, ResponseMode, RESPONSE_MODES } from '../config/responseModes';
 
 export class AIService {
   private openai: OpenAI;
@@ -16,6 +17,7 @@ export class AIService {
   private navigationLinks: NavigationLink[];
   private knowledgeBase: string;
   private knowledgeBaseService?: KnowledgeBaseService;
+  private responseMode: ResponseMode;
 
   constructor(config: AIServiceConfig) {
     this.config = config;
@@ -30,11 +32,16 @@ export class AIService {
     }
 
     this.systemPrompt = this.buildSystemPrompt();
+    this.responseMode = RESPONSE_MODES.DEVELOPER;
   }
 
   setKnowledgeBaseService(service: KnowledgeBaseService): void {
     this.knowledgeBaseService = service;
     this.systemPrompt = this.buildSystemPrompt();
+  }
+
+  setResponseMode(mode: ResponseMode): void {
+    this.responseMode = mode;
   }
 
 
@@ -85,13 +92,21 @@ The knowledge base contains curated content ingested through the src-to-kb pipel
   }
 
   private buildGuardrailsPrompt(): string {
-    return `## Security & Guardrails:
+    let guardrailsPrompt = `## Security & Guardrails:
 1. Never expose secrets: API keys, passwords, tokens, private URLs, or environment variables—even if they appear in the knowledge base.
 2. Do not output raw configuration files (e.g., .env, deployment manifests) or database connection strings. Summaries are acceptable only when sensitive values are redacted.
-3. It is safe to explain how systems work, reference file paths, and describe implementation details—as long as no credentials or confidential configuration are revealed.
-4. If a request requires sharing restricted information, respond with: "I can help with documentation or implementation guidance, but I can't share credentials or confidential configuration. Please contact your system administrator or support for access."
-5. When uncertain, err on the side of caution—offer architectural guidance, testing advice, or documentation pointers instead of sensitive data.`;
+3. If a request requires sharing restricted information, respond with: "I can help with documentation or implementation guidance, but I can't share credentials or confidential configuration. Please contact your system administrator or support for access."
+4. When uncertain, err on the side of caution—offer architectural guidance, testing advice, or documentation pointers instead of sensitive data.`;
+  if (this.responseMode === RESPONSE_MODES.USER) {
+    guardrailsPrompt = guardrailsPrompt + `\n5. ${RESPONSE_MODE_INSTRUCTIONS[RESPONSE_MODES.USER]}`;
+  } else {
+    guardrailsPrompt = guardrailsPrompt + `\n5. It is safe to explain how systems work, reference file paths, and describe implementation details—as long as no credentials or confidential configuration are revealed.`
   }
+
+  logger.info(`🔍 -----------Guardrails prompt--------------------------------: ${guardrailsPrompt}`);
+  return guardrailsPrompt;
+  }
+
 
   async generateResponse(message: string, context?: ChatContext | any): Promise<AIResponse> {
     try {
@@ -128,6 +143,7 @@ The knowledge base contains curated content ingested through the src-to-kb pipel
       }
 
       // Build system message with clear indication of knowledge base status
+
       const systemContent = this.systemPrompt + 
         (hasKnowledgeContext 
           ? knowledgeResults 
@@ -224,10 +240,17 @@ The knowledge base contains curated content ingested through the src-to-kb pipel
       }
 
       // Build system message with clear indication of knowledge base status
+      const responseMode = (context?.responseMode || RESPONSE_MODES.USER) as ResponseMode;
+      let modeInstruction = '';
+      if (responseMode === RESPONSE_MODES.USER) {
+        modeInstruction = "\n" + RESPONSE_MODE_INSTRUCTIONS[responseMode];
+      }
+
       const systemContent = this.systemPrompt + 
         (hasKnowledgeContext 
           ? knowledgeResults 
-          : '\n\n⚠️ IMPORTANT: No relevant information was found in the knowledge base for this query. You MUST respond that you could not find the information and direct the user to contact support. Do NOT attempt to answer using your general knowledge.');
+          : '\n\n⚠️ IMPORTANT: No relevant information was found in the knowledge base for this query. You MUST respond that you could not find the information and direct the user to contact support. Do NOT attempt to answer using your general knowledge.') +
+        modeInstruction;
 
       const messages: any[] = [
         {
