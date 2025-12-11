@@ -4,7 +4,7 @@
 
 ## 🚨 Breaking Change Notice
 
-### v2.3.0 - Enhanced RAG System (Latest)
+### v2.3.0 - Enhanced RAG System
 **New chunk-based architecture with adjacent retrieval for better code understanding.**
 
 - **Database Schema**: New `vezlo_knowledge_chunks` table and RPC functions
@@ -384,11 +384,16 @@ http://localhost:3000/api
 - `POST /api/messages/:uuid/generate` - Generate AI response
 
 #### Knowledge Base
-- `POST /api/knowledge/items` - Create knowledge item
+- `POST /api/knowledge/items` - Create knowledge item (supports raw content, pre-chunked data, or chunks with embeddings)
 - `GET /api/knowledge/items` - List knowledge items
 - `GET /api/knowledge/items/:uuid` - Get knowledge item
 - `PUT /api/knowledge/items/:uuid` - Update knowledge item
 - `DELETE /api/knowledge/items/:uuid` - Delete knowledge item
+
+**Knowledge Ingestion Options:**
+- **Raw Content**: Send `content` field, server creates chunks and embeddings
+- **Pre-chunked**: Send `chunks` array with `hasEmbeddings: false`, server generates embeddings
+- **Chunks + Embeddings**: Send `chunks` array with embeddings and `hasEmbeddings: true`, server stores directly
 
 #### Database Migrations
 - `GET /api/migrate?key=<secret>` - Run pending database migrations
@@ -718,4 +723,4 @@ This project is dual-licensed:
 
 ---
 
-**Status**: ✅ Production Ready | **Version**: 2.4.0 | **Node.js**: 20+ | **TypeScript**: 5+
+**Status**: ✅ Production Ready | **Version**: 2.5.0 | **Node.js**: 20+ | **TypeScript**: 5+

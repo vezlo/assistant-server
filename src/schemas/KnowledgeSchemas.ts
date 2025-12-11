@@ -19,7 +19,24 @@ export const KnowledgeSchemas = {
         enum: ['folder', 'document', 'file', 'url', 'url_directory'],
         description: 'Item type'
       },
-      content: { type: 'string', description: 'Content (required for document type)' },
+      content: { type: 'string', description: 'Raw content (required for document type if chunks not provided)' },
+      chunks: {
+        type: 'array',
+        description: 'Pre-chunked content with optional embeddings (alternative to raw content)',
+        items: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Chunk ID' },
+            index: { type: 'integer', description: 'Chunk index' },
+            content: { type: 'string', description: 'Chunk content' },
+            startLine: { type: 'integer', description: 'Start line number (for line-based chunking)' },
+            endLine: { type: 'integer', description: 'End line number (for line-based chunking)' },
+            size: { type: 'integer', description: 'Chunk size in characters' },
+            embedding: { type: 'array', items: { type: 'number' }, description: 'Pre-computed embedding vector (3072 dims for text-embedding-3-large)' }
+          }
+        }
+      },
+      hasEmbeddings: { type: 'boolean', description: 'Whether chunks include pre-computed embeddings' },
       file_url: { type: 'string', description: 'File/URL (required for file and url types)' },
       file_size: { type: 'integer', description: 'File size in bytes' },
       file_type: { type: 'string', description: 'MIME type for files' },

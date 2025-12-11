@@ -70,6 +70,16 @@ export class KnowledgeBaseService {
     description?: string;
     type: string;
     content?: string;
+    chunks?: Array<{
+      id?: string;
+      index: number;
+      content: string;
+      startLine?: number;
+      endLine?: number;
+      size?: number;
+      embedding?: number[];
+    }>;
+    hasEmbeddings?: boolean;
     file_url?: string;
     file_size?: number;
     file_type?: string;
@@ -124,9 +134,14 @@ export class KnowledgeBaseService {
 
       if (error) throw new Error(`Failed to create knowledge item: ${error.message}`);
 
-      // Create chunks with embeddings for content-based items
-      if (item.content && (item.type === 'document' || item.type === 'file')) {
-        console.log('Creating chunks for content...');
+      // Handle chunks if provided (from src-to-kb)
+      if (item.chunks && Array.isArray(item.chunks) && item.chunks.length > 0) {
+        logger.info(`Inserting ${item.chunks.length} pre-chunked items from src-to-kb...`);
+        await this.insertChunksFromPayload(data.id, item.chunks, item.hasEmbeddings === true);
+      }
+      // Create chunks with embeddings for raw content (existing logic)
+      else if (item.content && (item.type === 'document' || item.type === 'file')) {
+        logger.info('Creating chunks for raw content...');
         await this.createChunksForDocument(data.id, item.content, item.title);
       }
 
@@ -660,5 +675,106 @@ export class KnowledgeBaseService {
     }
 
     return chunks;
+  }
+
+  /**
+   * Insert chunks received from src-to-kb (pre-chunked with optional embeddings)
+   * This method handles chunks that were created externally and sent to the server
+   */
+  private async insertChunksFromPayload(
+    documentId: number,
+    chunks: Array<{
+      id?: string;
+      index: number;
+      content: string;
+      startLine?: number;
+      endLine?: number;
+      size?: number;
+      embedding?: number[];
+    }>,
+    hasEmbeddings: boolean
+  ): Promise<void> {
+    const processedAt = new Date().toISOString();
+
+    logger.info(`Inserting ${chunks.length} chunks (hasEmbeddings: ${hasEmbeddings})...`);
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      
+      // Validate chunk has required fields
+      if (!chunk.content || chunk.index === undefined) {
+        logger.warn(`Skipping invalid chunk at index ${i}: missing content or index`);
+        continue;
+      }
+
+      let embedding: number[] | null = null;
+
+      // Handle embeddings
+      if (hasEmbeddings && chunk.embedding) {
+        // Validate embedding dimensions (should be 3072 for text-embedding-3-large)
+        if (chunk.embedding.length === EMBEDDING_DIMENSIONS) {
+          embedding = chunk.embedding;
+        } else {
+          // If dimensions don't match, regenerate embedding
+          logger.warn(`Chunk ${i} has embedding with ${chunk.embedding.length} dimensions, expected ${EMBEDDING_DIMENSIONS}. Regenerating...`);
+          embedding = await this.generateEmbedding(chunk.content);
+        }
+      } else if (!hasEmbeddings) {
+        // Generate embeddings if not provided
+        embedding = await this.generateEmbedding(chunk.content);
+      } else {
+        // hasEmbeddings is true but no embedding in chunk - generate it
+        logger.warn(`Chunk ${i} marked as hasEmbeddings but no embedding provided. Generating...`);
+        embedding = await this.generateEmbedding(chunk.content);
+      }
+
+      if (!embedding) {
+        logger.error(`Failed to generate embedding for chunk ${i}`);
+        continue;
+      }
+
+      // Build metadata with line information if available
+      const chunkMetadata: Record<string, any> = {};
+      if (chunk.startLine !== undefined) {
+        chunkMetadata.startLine = chunk.startLine;
+      }
+      if (chunk.endLine !== undefined) {
+        chunkMetadata.endLine = chunk.endLine;
+      }
+      if (chunk.size !== undefined) {
+        chunkMetadata.size = chunk.size;
+      }
+
+      // Insert chunk via RPC
+      // Note: start_char and end_char are set to null since we're using line-based chunking
+      // Line information is stored in metadata instead
+      const { data, error } = await this.supabase.rpc('vezlo_insert_knowledge_chunk', {
+        p_document_id: documentId,
+        p_chunk_text: chunk.content,
+        p_chunk_index: chunk.index,
+        p_start_char: null, // Line-based chunking, no character positions
+        p_end_char: null,   // Line-based chunking, no character positions
+        p_token_count: Math.ceil(chunk.content.length / 4),
+        p_embedding: JSON.stringify(embedding),
+        p_processed_at: processedAt
+      });
+
+      if (error) {
+        logger.error(`❌ Failed to insert chunk ${i}:`, error);
+        throw new Error(`Failed to insert chunk: ${error.message}`);
+      }
+
+      // Update metadata if we have line information
+      if (Object.keys(chunkMetadata).length > 0) {
+        await this.supabase
+          .from('vezlo_knowledge_chunks')
+          .update({ metadata: chunkMetadata })
+          .eq('id', data);
+      }
+
+      logger.info(`✓ Inserted chunk ${i} (ID: ${data})`);
+    }
+
+    logger.info(`✅ Successfully inserted ${chunks.length} chunks`);
   }
 }
