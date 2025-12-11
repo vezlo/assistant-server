@@ -1,3 +1,9 @@
+## [2.5.1] - 2025-12-11
+
+### Changed
+- Optimized system prompt guidelines (reduced from 10 to 6 rules for better LLM comprehension)
+- Improved prompt structure for clearer knowledge base vs chat history usage
+
 ## [2.5.0] - 2025-12-09
 
 ### Added
