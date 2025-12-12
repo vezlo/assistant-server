@@ -89,7 +89,7 @@ export class IntentService {
     // Use all provided history (already limited by CHAT_HISTORY_LENGTH in ChatController)
     // No need to trim further - respect the configured limit
 
-    const responseMode = input.responseMode || RESPONSE_MODES.DEVELOPER;
+    const responseMode = input.responseMode || RESPONSE_MODES.USER;
     let modeInstructions = '';
     if (responseMode === RESPONSE_MODES.USER) {
       modeInstructions = "\n" + RESPONSE_MODE_INSTRUCTIONS[responseMode];

@@ -1,3 +1,14 @@
+## [2.7.0] - 2025-12-12
+
+### Added
+- **Company APIs**: New endpoints for managing company settings and retrieving analytics.
+  - `GET /api/company`: Retrieve authenticated company details (ID, name, response mode).
+  - `PATCH /api/company`: Update company settings (e.g., toggle `response_mode` between "user" and "developer").
+- **Response Modes**: Introduced configurable AI personality modes:
+  - `user`: Standard friendly assistant (default).
+  - `developer`: Technical, concise, and code-focused responses.
+- Database migration 009: Added `response_mode` column to `vezlo_companies` table.
+
 ## [2.5.1] - 2025-12-11
 
 ### Changed
