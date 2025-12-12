@@ -28,6 +28,7 @@ import { ChatController } from '../dist/src/controllers/ChatController';
 import { KnowledgeController } from '../dist/src/controllers/KnowledgeController';
 import { AuthController } from '../dist/src/controllers/AuthController';
 import { ApiKeyController } from '../dist/src/controllers/ApiKeyController';
+import { CompanyController } from '../dist/src/controllers/CompanyController';
 import { RealtimePublisher } from '../dist/src/services/RealtimePublisher';
 
 // Load environment variables
@@ -87,6 +88,7 @@ let chatController: ChatController;
 let knowledgeController: KnowledgeController;
 let authController: AuthController;
 let apiKeyController: ApiKeyController;
+let companyController: CompanyController;
 let supabase: any;
 let realtimePublisher: RealtimePublisher | null = null;
 
@@ -114,6 +116,7 @@ async function initializeServices() {
     authController = controllers.authController;
     authController.setRealtimePublisher(realtimePublisher);
     apiKeyController = controllers.apiKeyController;
+    companyController = controllers.companyController;
 
     servicesInitialized = true;
     logger.info('All services initialized successfully');
@@ -247,6 +250,9 @@ app.get('/api/auth/me', requireServices, requireAuth, (req, res) => authControll
 // API Key Management APIs
 app.post('/api/api-keys', requireServices, requireAuth, (req, res) => apiKeyController.generateApiKey(req, res));
 app.get('/api/api-keys/status', requireServices, requireAuth, (req, res) => apiKeyController.getApiKeyStatus(req, res));
+
+// Company APIs
+app.get('/api/company/analytics', requireServices, requireAuth, (req, res) => companyController.getAnalytics(req, res));
 
 // Conversation APIs (Public - No Authentication Required for Widget)
 app.post('/api/conversations', requireServices, (req, res) => chatController.createConversation(req, res));
