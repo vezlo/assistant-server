@@ -21,6 +21,8 @@ export class KnowledgeController {
         description, 
         type, 
         content, 
+        chunks,
+        hasEmbeddings,
         file_url, 
         file_size, 
         file_type, 
@@ -49,9 +51,12 @@ export class KnowledgeController {
       }
 
       // Validate required fields based on type
-      if ((type === 'document') && !content) {
-        res.status(400).json({ error: 'content is required for document type' });
-        return;
+      // For document type: either content OR chunks must be provided
+      if (type === 'document') {
+        if (!content && (!chunks || !Array.isArray(chunks) || chunks.length === 0)) {
+          res.status(400).json({ error: 'content or chunks array is required for document type' });
+          return;
+        }
       }
 
       if ((type === 'file' || type === 'url') && !file_url) {
@@ -72,6 +77,8 @@ export class KnowledgeController {
         description,
         type,
         content,
+        chunks,
+        hasEmbeddings: hasEmbeddings === true,
         file_url,
         file_size,
         file_type,

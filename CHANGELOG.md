@@ -1,3 +1,20 @@
+## [2.5.1] - 2025-12-11
+
+### Changed
+- Optimized system prompt guidelines (reduced from 10 to 6 rules for better LLM comprehension)
+- Improved prompt structure for clearer knowledge base vs chat history usage
+
+## [2.5.0] - 2025-12-09
+
+### Added
+- Flexible knowledge ingestion: `POST /api/knowledge/items` now accepts raw content, pre-chunked data, or chunks with embeddings
+- Support for line-based chunking metadata (startLine, endLine) in chunk payloads
+- API schema updated to document `chunks` array and `hasEmbeddings` flag in Swagger documentation
+
+### Changed
+- Knowledge base service handles both character-based (server-side) and line-based (client-side) chunking
+- `POST /api/knowledge/items` validation: now accepts `content` OR `chunks` array for document type
+
 ## [2.4.0] - 2025-12-05
 
 ### Added
