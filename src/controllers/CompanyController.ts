@@ -54,10 +54,10 @@ export class CompanyController {
         res.status(401).json({ error: 'Authentication required' });
         return;
       }
-      
+
       const allowedUpdates = ['response_mode'];
       const updates = Object.keys(req.body);
-      
+
       // Filter out invalid updates
       const validUpdates: Record<string, any> = {};
       updates.forEach((update) => {

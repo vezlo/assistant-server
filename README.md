@@ -1,6 +1,10 @@
 # Vezlo AI Assistant Server
 
+[![npm version](https://img.shields.io/npm/v/@vezlo/assistant-server.svg)](https://www.npmjs.com/package/@vezlo/assistant-server) [![license](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](https://opensource.org/licenses/AGPL-3.0)
+
 🚀 **Production-ready Node.js/TypeScript API server** for the Vezlo AI Assistant platform - Complete backend APIs with advanced RAG (chunk-based semantic search + adjacent retrieval), Docker deployment, and database migrations.
+
+**📋 [Changelog](./CHANGELOG.md)** | **🐛 [Report Issue](https://github.com/vezlo/assistant-server/issues)** | **💬 [Discussions](https://github.com/vezlo/assistant-server/discussions)**
 
 ## 🚨 Breaking Change Notice
 
@@ -723,4 +727,4 @@ This project is dual-licensed:
 
 ---
 
-**Status**: ✅ Production Ready | **Version**: 2.5.1 | **Node.js**: 20+ | **TypeScript**: 5+
+**Status**: ✅ Production Ready | **Version**: 2.6.0 | **Node.js**: 20+ | **TypeScript**: 5+

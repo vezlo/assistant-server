@@ -54,11 +54,11 @@ INSERT INTO knex_migrations (name, batch, migration_time)
 SELECT '007_add_updated_at_to_feedback.ts', 1, NOW()
 WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '007_add_updated_at_to_feedback.ts');
 
-INSERT INTO knex_migrations (name, batch, migration_time) 
+INSERT INTO knex_migrations (name, batch, migration_time)
 SELECT '008_add_conversation_stats_rpc.ts', 1, NOW()
 WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '008_add_conversation_stats_rpc.ts');
 
-INSERT INTO knex_migrations (name, batch, migration_time) 
+INSERT INTO knex_migrations (name, batch, migration_time)
 SELECT '009_add_response_mode.ts', 1, NOW()
 WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '009_add_response_mode.ts');
 
@@ -583,7 +583,7 @@ BEGIN
   FROM vezlo_conversations
   WHERE company_id = p_company_id
   AND deleted_at IS NULL;
-  
+
   RETURN result;
 END;
 $$;
@@ -605,7 +605,7 @@ BEGIN
   INTO result
   FROM vezlo_message_feedback
   WHERE company_id = p_company_id;
-  
+
   RETURN result;
 END;
 $$;
