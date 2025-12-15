@@ -17,7 +17,6 @@ export class AIService {
   private navigationLinks: NavigationLink[];
   private knowledgeBase: string;
   private knowledgeBaseService?: KnowledgeBaseService;
-  private responseMode: ResponseMode;
 
   constructor(config: AIServiceConfig) {
     this.config = config;
@@ -32,18 +31,12 @@ export class AIService {
     }
 
     this.systemPrompt = this.buildSystemPrompt();
-    this.responseMode = RESPONSE_MODES.DEVELOPER;
   }
 
   setKnowledgeBaseService(service: KnowledgeBaseService): void {
     this.knowledgeBaseService = service;
     this.systemPrompt = this.buildSystemPrompt();
   }
-
-  setResponseMode(mode: ResponseMode): void {
-    this.responseMode = mode;
-  }
-
 
   private buildSystemPrompt(): string {
     const orgName = this.config.organizationName || 'Your Organization';

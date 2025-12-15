@@ -333,7 +333,7 @@ export class ChatController {
           
           // Get knowledge base search results if available
           const aiService = (this.chatManager as any).aiService;
-          aiService.setResponseMode(responseMode);
+
           let knowledgeResults: string | null = null;
           
           // Get conversation to extract company_id for knowledge base search
