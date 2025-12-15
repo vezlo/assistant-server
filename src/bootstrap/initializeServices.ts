@@ -149,7 +149,6 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
   const authController = new AuthController(supabase);
   const apiKeyService = new ApiKeyService(supabase);
   const apiKeyController = new ApiKeyController(apiKeyService);
-  const companyService = new CompanyService(storage.company);
   const companyController = new CompanyController(companyService);
 
   return {
