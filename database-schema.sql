@@ -54,6 +54,10 @@ INSERT INTO knex_migrations (name, batch, migration_time)
 SELECT '007_add_updated_at_to_feedback.ts', 1, NOW()
 WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '007_add_updated_at_to_feedback.ts');
 
+INSERT INTO knex_migrations (name, batch, migration_time) 
+SELECT '008_add_conversation_stats_rpc.ts', 1, NOW()
+WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '008_add_conversation_stats_rpc.ts');
+
 -- Set migration lock to unlocked (0 = unlocked, 1 = locked)
 INSERT INTO knex_migrations_lock (index, is_locked) 
 VALUES (1, 0)
@@ -549,5 +553,54 @@ BEGIN
     AND (1 - (ki.embedding <=> query_embedding)) >= match_threshold
   ORDER BY ki.embedding <=> query_embedding
   LIMIT match_count;
+END;
+$$;
+
+-- ============================================================================
+-- ANALYTICS RPC FUNCTIONS (Migration 008)
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION get_conversation_stats(p_company_id bigint)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  result json;
+BEGIN
+  SELECT json_build_object(
+    'total', COUNT(*),
+    'closed', COUNT(CASE WHEN closed_at IS NOT NULL THEN 1 END),
+    'open', COUNT(CASE WHEN closed_at IS NULL THEN 1 END)
+  )
+  INTO result
+  FROM vezlo_conversations
+  WHERE company_id = p_company_id
+  AND deleted_at IS NULL;
+  
+  RETURN result;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION get_feedback_stats(p_company_id bigint)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  result json;
+BEGIN
+  SELECT json_build_object(
+    'total', COUNT(*),
+    'likes', COUNT(CASE WHEN rating = 'positive' THEN 1 END),
+    'dislikes', COUNT(CASE WHEN rating = 'negative' THEN 1 END)
+  )
+  INTO result
+  FROM vezlo_message_feedback
+  WHERE company_id = p_company_id;
+  
+  RETURN result;
 END;
 $$;
