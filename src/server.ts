@@ -333,15 +333,21 @@ app.get('/api/api-keys/status', authenticateUser(supabase), (req, res) => apiKey
    *                   properties:
    *                     total_active_users:
    *                       type: integer
-   *                     assistants:
-   *                       type: integer
-   *                     agents:
-   *                       type: integer
    *                 messages:
    *                   type: object
    *                   properties:
+   *                     total:
+   *                       type: integer
+   *                       description: Total messages across all types
    *                     user_messages_total:
    *                       type: integer
+   *                       description: Total user messages
+   *                     assistant_messages_total:
+   *                       type: integer
+   *                       description: Total AI assistant messages
+   *                     agent_messages_total:
+   *                       type: integer
+   *                       description: Total human agent messages
    *                 feedback:
    *                   type: object
    *                   properties:

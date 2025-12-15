@@ -18,19 +18,17 @@ export class CompanyRepository {
    * Fetch all analytics data for a company in parallel
    */
   async getAnalytics(companyId: string | number): Promise<CompanyAnalytics> {
-    const [conversationsResult, usersResult, userMessagesResult, feedbackResult] = await Promise.all([
+    const [conversationsResult, usersResult, messageStatsResult, feedbackResult] = await Promise.all([
       this.getConversationStats(companyId),
       this.getUserStats(companyId),
-      this.getUserMessageCount(companyId),
+      this.getMessageStats(companyId),
       this.getFeedbackStats(companyId)
     ]);
 
     return {
       conversations: conversationsResult,
       users: usersResult,
-      messages: {
-        user_messages_total: userMessagesResult
-      },
+      messages: messageStatsResult,
       feedback: feedbackResult
     };
   }
@@ -44,6 +42,7 @@ export class CompanyRepository {
       .rpc('get_conversation_stats', { p_company_id: companyId });
 
     if (error) throw new Error(`Failed to fetch conversation stats: ${error.message}`);
+    if (!data) throw new Error('Failed to fetch conversation stats: No data returned');
 
     return {
       total: Number(data.total) || 0,
@@ -63,23 +62,66 @@ export class CompanyRepository {
 
     if (error) throw new Error(`Failed to fetch user stats: ${error.message}`);
 
+    const users = data || [];
 
     return {
-      total_active_users: data.length,
+      total_active_users: users.length
     };
   }
 
-  private async getUserMessageCount(companyId: string | number) {
+  /**
+   * Get message statistics including total and breakdown by type
+   */
+  private async getMessageStats(companyId: string | number) {
     const messagesTable = this.getTableName('messages');
     const conversationsTable = this.getTableName('conversations');
     
+    // Get all message counts by type in parallel
+    const [userCount, assistantCount, agentCount, totalCount] = await Promise.all([
+      this.getMessageCountByType(companyId, 'user', messagesTable, conversationsTable),
+      this.getMessageCountByType(companyId, 'assistant', messagesTable, conversationsTable),
+      this.getMessageCountByType(companyId, 'agent', messagesTable, conversationsTable),
+      this.getTotalMessageCount(companyId, messagesTable, conversationsTable)
+    ]);
+
+    return {
+      total: totalCount,
+      user_messages_total: userCount,
+      assistant_messages_total: assistantCount,
+      agent_messages_total: agentCount
+    };
+  }
+
+  private async getMessageCountByType(
+    companyId: string | number,
+    messageType: string,
+    messagesTable: string,
+    conversationsTable: string
+  ): Promise<number> {
     const { count, error } = await this.supabase
       .from(messagesTable)
       .select(`${conversationsTable}!inner(company_id)`, { count: 'exact', head: true })
-      .eq('type', 'user')
+      .eq('type', messageType)
       .eq(`${conversationsTable}.company_id`, companyId);
 
-    if (error) throw new Error(`Failed to fetch message count: ${error.message}`);
+    if (error) throw new Error(`Failed to fetch ${messageType} message count: ${error.message}`);
+    
+    return count || 0;
+  }
+
+  private async getTotalMessageCount(
+    companyId: string | number,
+    messagesTable: string,
+    conversationsTable: string
+  ): Promise<number> {
+    // Exclude system messages from total count (system messages are like "user joined", "conversation closed", etc.)
+    const { count, error } = await this.supabase
+      .from(messagesTable)
+      .select(`${conversationsTable}!inner(company_id)`, { count: 'exact', head: true })
+      .eq(`${conversationsTable}.company_id`, companyId)
+      .neq('type', 'system');
+
+    if (error) throw new Error(`Failed to fetch total message count: ${error.message}`);
     
     return count || 0;
   }
@@ -91,6 +133,7 @@ export class CompanyRepository {
       .rpc('get_feedback_stats', { p_company_id: companyId });
 
     if (error) throw new Error(`Failed to fetch feedback stats: ${error.message}`);
+    if (!data) throw new Error('Failed to fetch feedback stats: No data returned');
 
     return {
       total: Number(data.total) || 0,

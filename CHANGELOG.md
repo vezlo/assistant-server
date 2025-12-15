@@ -1,3 +1,16 @@
+## [2.6.0] - 2025-12-12
+
+### Added
+- **Analytics API**: New `GET /api/company/analytics` endpoint for company-wide analytics
+- **RPC Functions**: Added `get_conversation_stats()` and `get_feedback_stats()` database functions (Migration 008)
+- **Message Statistics**: Comprehensive message breakdown by type (user, assistant, agent) excluding system messages
+- **Company Analytics**: Returns conversation stats, user counts, message volume, and feedback sentiment
+
+### Changed
+- Analytics endpoint requires authentication and returns company-scoped data
+- Total message count excludes system messages (e.g., "user joined", "conversation closed")
+- Swagger documentation updated with complete analytics API schema
+
 ## [2.5.1] - 2025-12-11
 
 ### Changed
