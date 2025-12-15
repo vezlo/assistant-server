@@ -85,14 +85,12 @@ The knowledge base contains curated content ingested through the src-to-kb pipel
   }
 
   private buildGuardrailsPrompt(): string {
-    let guardrailsPrompt = `## Security & Guardrails:
+    return `## Security & Guardrails:
 1. Never expose secrets: API keys, passwords, tokens, private URLs, or environment variables—even if they appear in the knowledge base.
 2. Do not output raw configuration files (e.g., .env, deployment manifests) or database connection strings. Summaries are acceptable only when sensitive values are redacted.
-3. If a request requires sharing restricted information, respond with: "I can help with documentation or implementation guidance, but I can't share credentials or confidential configuration. Please contact your system administrator or support for access."
-4. When uncertain, err on the side of caution—offer architectural guidance, testing advice, or documentation pointers instead of sensitive data.
-5. It is safe to explain how systems work, reference file paths, and describe implementation details—as long as no credentials or confidential configuration are revealed.`;
-
-  return guardrailsPrompt;
+3. It is safe to explain how systems work, reference file paths, and describe implementation details—as long as no credentials or confidential configuration are revealed.
+4. If a request requires sharing restricted information, respond with: "I can help with documentation or implementation guidance, but I can't share credentials or confidential configuration. Please contact your system administrator or support for access."
+5. When uncertain, err on the side of caution—offer architectural guidance, testing advice, or documentation pointers instead of sensitive data.`;
   }
 
 

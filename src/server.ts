@@ -364,6 +364,76 @@ app.get('/api/api-keys/status', authenticateUser(supabase), (req, res) => apiKey
    */
   app.get('/api/company/analytics', authenticateUser(supabase), (req, res) => companyController.getAnalytics(req, res));
 
+  /**
+   * @swagger
+   * /api/company:
+   *   get:
+   *     summary: Get company details
+   *     description: Returns details of the authenticated company.
+   *     tags: [Company]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Company details retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 id:
+   *                   type: integer
+   *                 name:
+   *                   type: string
+   *                 response_mode:
+   *                   type: string
+   *                   enum: [user, developer]
+   *       401:
+   *         description: Not authenticated
+   *       500:
+   *         description: Internal server error
+   */
+  app.get('/api/company', authenticateUser(supabase), (req, res) => companyController.getCompany(req, res));
+
+  /**
+   * @swagger
+   * /api/company:
+   *   patch:
+   *     summary: Update company settings
+   *     description: Updates the authenticated company's settings (e.g., response mode).
+   *     tags: [Company]
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               response_mode:
+   *                 type: string
+   *                 enum: [user, developer]
+   *                 description: The response mode for the AI assistant.
+   *     responses:
+   *       200:
+   *         description: Settings updated successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *       400:
+   *         description: Invalid input
+   *       401:
+   *         description: Not authenticated
+   *       500:
+   *         description: Internal server error
+   */
+  app.patch('/api/company', authenticateUser(supabase), (req, res) => companyController.updateCompany(req, res));
+
 // Chat API Routes
 /**
  * @swagger
