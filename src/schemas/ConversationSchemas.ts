@@ -30,12 +30,13 @@ export const ConversationSchemas = {
       uuid: { type: 'string', description: 'Conversation UUID' },
       title: { type: 'string', description: 'Conversation title' },
       message_count: { type: 'integer', description: 'Number of messages' },
-      status: { type: 'string', description: 'Conversation status (open, in_progress, closed)' },
+      status: { type: 'string', description: 'Conversation status (open, in_progress, closed, archived)' },
       created_at: { type: 'string', format: 'date-time' },
       updated_at: { type: 'string', format: 'date-time' },
       joined_at: { type: 'string', format: 'date-time', nullable: true },
       responded_at: { type: 'string', format: 'date-time', nullable: true },
       closed_at: { type: 'string', format: 'date-time', nullable: true },
+      archived_at: { type: 'string', format: 'date-time', nullable: true },
       last_message_at: { type: 'string', format: 'date-time', nullable: true }
     }
   },
@@ -72,12 +73,13 @@ export const ConversationSchemas = {
       user_uuid: { type: 'string', description: 'User UUID' },
       company_uuid: { type: 'string', description: 'Company UUID' },
       message_count: { type: 'integer', description: 'Number of messages' },
-      status: { type: 'string', description: 'Conversation status (open, in_progress, closed)' },
+      status: { type: 'string', description: 'Conversation status (open, in_progress, closed, archived)' },
       created_at: { type: 'string', format: 'date-time' },
       updated_at: { type: 'string', format: 'date-time' },
       joined_at: { type: 'string', format: 'date-time', nullable: true },
       responded_at: { type: 'string', format: 'date-time', nullable: true },
       closed_at: { type: 'string', format: 'date-time', nullable: true },
+      archived_at: { type: 'string', format: 'date-time', nullable: true },
       last_message_at: { type: 'string', format: 'date-time', nullable: true }
     }
   },

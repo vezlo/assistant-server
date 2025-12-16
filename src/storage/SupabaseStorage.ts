@@ -138,7 +138,7 @@ export class SupabaseStorage implements ChatStorage {
     // Convert string IDs to integers (dummy IDs for now)
     const creatorId = parseInt(userId) || 1;
     const companyId = organizationId ? parseInt(organizationId) || 1 : null;
-    const { limit, offset, orderBy } = options;
+    const { limit, offset, orderBy, status } = options;
     const orderColumn = orderBy === 'last_message_at' ? 'last_message_at' : 'updated_at';
     const from = typeof offset === 'number' && offset >= 0 ? offset : 0;
     const pageSize = typeof limit === 'number' && limit > 0 ? limit : undefined;
@@ -152,6 +152,12 @@ export class SupabaseStorage implements ChatStorage {
       query = query.eq('company_id', companyId);
     } else {
       query = query.eq('creator_id', creatorId);
+    }
+
+    if (status === 'archived') {
+      query = query.not('archived_at', 'is', null);
+    } else if (status === 'active') {
+      query = query.is('archived_at', null);
     }
 
     query = query.order(orderColumn, { ascending: false, nullsFirst: false });

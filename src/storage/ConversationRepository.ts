@@ -89,6 +89,7 @@ export class ConversationRepository {
     if (updates.joinedAt !== undefined) updateData.joined_at = updates.joinedAt instanceof Date ? updates.joinedAt.toISOString() : updates.joinedAt;
     if (updates.respondedAt !== undefined) updateData.responded_at = updates.respondedAt instanceof Date ? updates.respondedAt.toISOString() : updates.respondedAt;
     if (updates.closedAt !== undefined) updateData.closed_at = updates.closedAt instanceof Date ? updates.closedAt.toISOString() : updates.closedAt;
+    if (updates.archivedAt !== undefined) updateData.archived_at = updates.archivedAt instanceof Date ? updates.archivedAt.toISOString() : updates.archivedAt;
     updateData.updated_at = new Date().toISOString();
 
     const { data, error } = await this.supabase
@@ -121,7 +122,7 @@ export class ConversationRepository {
   ): Promise<ConversationListResult> {
     const tableName = this.getTableName('conversations');
 
-    const { limit, offset, orderBy } = options;
+    const { limit, offset, orderBy, status } = options;
     const orderColumn = orderBy === 'last_message_at' ? 'last_message_at' : 'updated_at';
     const from = typeof offset === 'number' && offset >= 0 ? offset : 0;
     const pageSize = typeof limit === 'number' && limit > 0 ? limit : undefined;
@@ -135,6 +136,12 @@ export class ConversationRepository {
       query = query.eq('company_id', parseInt(organizationId) || 1);
     } else {
       query = query.eq('creator_id', parseInt(userId) || 1);
+    }
+
+    if (status === 'archived') {
+      query = query.not('archived_at', 'is', null);
+    } else if (status === 'active') {
+      query = query.is('archived_at', null);
     }
 
     query = query.order(orderColumn, { ascending: false, nullsFirst: false });
@@ -192,6 +199,7 @@ export class ConversationRepository {
       joinedAt: row.joined_at ? new Date(row.joined_at) : undefined,
       respondedAt: row.responded_at ? new Date(row.responded_at) : undefined,
       closedAt: row.closed_at ? new Date(row.closed_at) : undefined,
+      archivedAt: row.archived_at ? new Date(row.archived_at) : undefined,
       lastMessageAt: row.last_message_at ? new Date(row.last_message_at) : undefined
     };
   }

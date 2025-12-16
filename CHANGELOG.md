@@ -1,3 +1,17 @@
+## [2.7.0] - 2025-01-09
+
+### Added
+- **Archive Conversations**: New `POST /api/conversations/:uuid/archive` endpoint to archive closed conversations
+- **Status Filtering**: `GET /api/conversations` now supports `?status=active|archived` query parameter
+- Database migration (009) adds `archived_at` timestamp column with index
+- Archive realtime event publishing via Socket.IO
+
+### Changed
+- Conversation status calculation now includes `archived` state (archived > closed > in_progress > open)
+- `archived_at` field added to all conversation response schemas
+- Both `api/index.ts` and `server.ts` routes updated with archive endpoint
+- Swagger documentation updated with archive endpoint and status filter
+
 ## [2.6.0] - 2025-12-12
 
 ### Added

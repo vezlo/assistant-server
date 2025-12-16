@@ -528,7 +528,9 @@ export class ChatController {
       }
 
       const toIso = (date?: Date) => (date ? date.toISOString() : null);
-      const status = conversation.closedAt
+      const status = conversation.archivedAt
+        ? 'archived'
+        : conversation.closedAt
         ? 'closed'
         : conversation.joinedAt
         ? 'in_progress'
@@ -545,6 +547,7 @@ export class ChatController {
         joined_at: toIso(conversation.joinedAt),
         responded_at: toIso(conversation.respondedAt),
         closed_at: toIso(conversation.closedAt),
+        archived_at: toIso(conversation.archivedAt),
         last_message_at: toIso(conversation.lastMessageAt),
         status
       });
@@ -821,6 +824,83 @@ export class ChatController {
     }
   }
 
+  // Archive conversation
+  async archiveConversation(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user || !req.profile) {
+        res.status(401).json({ error: 'Authentication required' });
+        return;
+      }
+
+      const { uuid } = req.params;
+      const conversation = await this.storage.getConversation(uuid);
+
+      if (!conversation) {
+        res.status(404).json({ error: 'Conversation not found' });
+        return;
+      }
+
+      if (conversation.organizationId !== req.profile.companyId) {
+        res.status(404).json({ error: 'Conversation not found' });
+        return;
+      }
+
+      if (!conversation.closedAt) {
+        res.status(400).json({ error: 'Conversation must be closed before archiving' });
+        return;
+      }
+
+      if (conversation.archivedAt) {
+        res.status(400).json({ error: 'Conversation is already archived' });
+        return;
+      }
+
+      const archivedAt = new Date();
+
+      await this.storage.updateConversation(uuid, {
+        archivedAt
+      });
+
+      if (this.realtimePublisher) {
+        try {
+          const { data: company } = await this.supabase
+            .from('vezlo_companies')
+            .select('uuid')
+            .eq('id', conversation.organizationId)
+            .single();
+
+          if (company?.uuid) {
+            await this.realtimePublisher.publish(
+              `company:${company.uuid}:conversations`,
+              'conversation:archived',
+              {
+                conversation_uuid: uuid,
+                conversation_update: {
+                  archived_at: archivedAt.toISOString(),
+                  status: 'archived'
+                }
+              }
+            );
+          }
+        } catch (error) {
+          logger.error('[ChatController] Failed to publish archive conversation update:', error);
+        }
+      }
+
+      res.json({
+        success: true,
+        archived_at: archivedAt.toISOString()
+      });
+
+    } catch (error) {
+      logger.error('Archive conversation error:', error);
+      res.status(500).json({
+        error: 'Failed to archive conversation',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
   // Send agent message
   async sendAgentMessage(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
@@ -934,6 +1014,8 @@ export class ChatController {
       const offset = (page - 1) * pageSize;
       const orderParam = (req.query.order_by as string) || 'last_message_at';
       const orderBy = orderParam === 'created_at' ? 'updated_at' : 'last_message_at';
+      const statusParam = req.query.status as string;
+      const status = statusParam === 'archived' ? 'archived' : statusParam === 'active' ? 'active' : undefined;
 
       const { conversations, total } = await this.storage.getUserConversations(
         req.user!.id,
@@ -941,7 +1023,8 @@ export class ChatController {
         {
           limit: pageSize,
           offset,
-          orderBy: orderBy as 'last_message_at' | 'updated_at'
+          orderBy: orderBy as 'last_message_at' | 'updated_at',
+          status
         }
       );
 
@@ -957,8 +1040,11 @@ export class ChatController {
           joined_at: toIso(conversation.joinedAt),
           responded_at: toIso(conversation.respondedAt),
           closed_at: toIso(conversation.closedAt),
+          archived_at: toIso(conversation.archivedAt),
           last_message_at: toIso(conversation.lastMessageAt),
-          status: conversation.closedAt
+          status: conversation.archivedAt
+            ? 'archived'
+            : conversation.closedAt
             ? 'closed'
             : conversation.joinedAt
             ? 'in_progress'

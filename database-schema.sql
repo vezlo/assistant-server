@@ -58,6 +58,10 @@ INSERT INTO knex_migrations (name, batch, migration_time)
 SELECT '008_add_conversation_stats_rpc.ts', 1, NOW()
 WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '008_add_conversation_stats_rpc.ts');
 
+INSERT INTO knex_migrations (name, batch, migration_time) 
+SELECT '009_add_archived_at_column.ts', 1, NOW()
+WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '009_add_archived_at_column.ts');
+
 -- Set migration lock to unlocked (0 = unlocked, 1 = locked)
 INSERT INTO knex_migrations_lock (index, is_locked) 
 VALUES (1, 0)
@@ -125,6 +129,7 @@ CREATE TABLE IF NOT EXISTS vezlo_conversations (
   joined_at TIMESTAMPTZ,
   responded_at TIMESTAMPTZ,
   closed_at TIMESTAMPTZ,
+  archived_at TIMESTAMPTZ,
   last_message_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
@@ -284,6 +289,7 @@ CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_updated_at ON vezlo_conversat
 CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_last_message_at ON vezlo_conversations(last_message_at DESC);
 CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_joined_at ON vezlo_conversations(joined_at);
 CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_closed_at ON vezlo_conversations(closed_at);
+CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_archived_at ON vezlo_conversations(archived_at);
 
 -- Messages indexes
 CREATE INDEX IF NOT EXISTS idx_vezlo_messages_uuid ON vezlo_messages(uuid);

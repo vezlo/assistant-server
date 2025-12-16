@@ -394,6 +394,12 @@ app.get('/api/api-keys/status', authenticateUser(supabase), (req, res) => apiKey
  *           enum: [last_message_at, created_at]
  *           default: last_message_at
  *         description: Sort conversations by latest activity or creation time (always descending)
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [active, archived]
+ *         description: Filter by conversation status (active excludes archived, archived shows only archived)
  *     responses:
  *       200:
  *         description: Conversations retrieved successfully
@@ -647,6 +653,38 @@ app.post('/api/conversations/:uuid/messages/agent', authenticateUser(supabase), 
  */
 app.post('/api/conversations/:uuid/close', authenticateUser(supabase), (req, res) =>
   (chatController as any).closeConversation(req as AuthenticatedRequest, res)
+);
+
+/**
+ * @swagger
+ * /api/conversations/{uuid}/archive:
+ *   post:
+ *     summary: Archive conversation
+ *     description: Archive a closed conversation and publish realtime update
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: uuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Conversation UUID
+ *     responses:
+ *       200:
+ *         description: Conversation archived successfully
+ *       400:
+ *         description: Invalid request (conversation must be closed first or already archived)
+ *       401:
+ *         description: Not authenticated
+ *       404:
+ *         description: Conversation not found
+ *       500:
+ *         description: Internal server error
+ */
+app.post('/api/conversations/:uuid/archive', authenticateUser(supabase), (req, res) =>
+  (chatController as any).archiveConversation(req as AuthenticatedRequest, res)
 );
 
 /**
