@@ -1,3 +1,16 @@
+## [2.8.0] - 2025-12-17
+
+### Added
+- **Citation System**: New citation API endpoint `GET /api/knowledge/citations/:uuid/context` for fetching source document content
+- **CitationService**: Service to retrieve full document content or contextual chunks with adjacent context
+- **Sources in AI Responses**: AI streaming responses now include `sources` array with document UUIDs and titles in final chunk
+- **Smart Content Retrieval**: Citation API automatically uses full content if available, otherwise fetches relevant chunks ±2 adjacent chunks for context
+
+### Changed
+- AI response streaming includes sources array when knowledge base results are used
+- Citation API returns `content` field instead of `chunks` array for simpler frontend handling
+- Sources only sent when knowledge results are actually provided to LLM
+
 ## [2.7.0] - 2025-12-16
 
 ### Added

@@ -1,16 +1,19 @@
 import { Request, Response } from 'express';
 import { KnowledgeBaseService } from '../services/KnowledgeBaseService';
 import { AIService } from '../services/AIService';
+import { CitationService } from '../services/CitationService';
 import { AuthenticatedRequest } from '../middleware/auth';
 import logger from '../config/logger';
 
 export class KnowledgeController {
   private knowledgeBase: KnowledgeBaseService;
   private aiService?: AIService;
+  private citationService?: CitationService;
 
-  constructor(knowledgeBase: KnowledgeBaseService, aiService?: AIService) {
+  constructor(knowledgeBase: KnowledgeBaseService, aiService?: AIService, citationService?: CitationService) {
     this.knowledgeBase = knowledgeBase;
     this.aiService = aiService;
+    this.citationService = citationService;
   }
 
   async createItem(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -340,6 +343,49 @@ export class KnowledgeController {
       logger.error('RAG search error:', error);
       res.status(500).json({
         error: 'Failed to perform RAG search',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  /**
+   * Get citation context for a knowledge item
+   * Public API - no authentication required for widget access
+   */
+  async getCitationContext(req: Request, res: Response): Promise<void> {
+    try {
+      const { uuid } = req.params;
+      const chunkIndicesParam = req.query.chunk_indices as string;
+
+      if (!chunkIndicesParam) {
+        res.status(400).json({ error: 'chunk_indices query parameter required' });
+        return;
+      }
+
+      const chunkIndices = chunkIndicesParam.split(',').map(i => parseInt(i.trim(), 10)).filter(i => !isNaN(i));
+
+      if (chunkIndices.length === 0) {
+        res.status(400).json({ error: 'Invalid chunk_indices format' });
+        return;
+      }
+
+      if (!this.citationService) {
+        res.status(500).json({ error: 'Citation service not available' });
+        return;
+      }
+
+      const context = await this.citationService.getContext(uuid, chunkIndices);
+
+      if (!context) {
+        res.status(404).json({ error: 'Document not found or no chunks available' });
+        return;
+      }
+
+      res.json(context);
+    } catch (error) {
+      logger.error('Get citation context error:', error);
+      res.status(500).json({
+        error: 'Failed to get citation context',
         message: error instanceof Error ? error.message : 'Unknown error'
       });
     }

@@ -148,15 +148,12 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
     realtimePublisher
   });
 
-  const knowledgeController = new KnowledgeController(knowledgeBase, aiService);
+  const knowledgeController = new KnowledgeController(knowledgeBase, aiService, citationService);
   const authController = new AuthController(supabase);
   const apiKeyService = new ApiKeyService(supabase);
   const apiKeyController = new ApiKeyController(apiKeyService);
   const companyService = new CompanyService(storage.company);
   const companyController = new CompanyController(companyService);
-
-  // Store citation service globally for public API access
-  (global as any).citationService = citationService;
 
   return {
     services: {
