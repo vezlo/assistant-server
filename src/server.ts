@@ -95,7 +95,7 @@ async function initializeServices() {
   try {
     logger.info('Initializing Vezlo services...');
 
-    const { controllers } = initializeCoreServices({
+    const { controllers, services } = initializeCoreServices({
       supabase,
       tablePrefix: 'vezlo',
       knowledgeTableName: 'vezlo_knowledge_items'
@@ -107,6 +107,9 @@ async function initializeServices() {
     authController.setRealtimePublisher(realtimePublisher);
     apiKeyController = controllers.apiKeyController;
     companyController = controllers.companyController;
+
+    // Store citation service globally for public API access
+    (global as any).citationService = services.citationService;
 
     logger.info('All services initialized successfully');
   } catch (error) {
@@ -686,6 +689,90 @@ app.post('/api/conversations/:uuid/close', authenticateUser(supabase), (req, res
 app.post('/api/conversations/:uuid/archive', authenticateUser(supabase), (req, res) =>
   (chatController as any).archiveConversation(req as AuthenticatedRequest, res)
 );
+
+/**
+ * @swagger
+ * /api/knowledge/citations/{uuid}/context:
+ *   get:
+ *     summary: Get citation context
+ *     description: Public API to fetch contextual chunks for a knowledge document citation (matched chunks ± adjacent context)
+ *     tags: [Knowledge]
+ *     parameters:
+ *       - in: path
+ *         name: uuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Document UUID
+ *       - in: query
+ *         name: chunk_indices
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Comma-separated chunk indices (e.g., "3,4,5")
+ *     responses:
+ *       200:
+ *         description: Citation context retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 document_title:
+ *                   type: string
+ *                 document_type:
+ *                   type: string
+ *                 chunks:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       chunk_index:
+ *                         type: integer
+ *                       chunk_text:
+ *                         type: string
+ *       400:
+ *         description: Invalid request
+ *       404:
+ *         description: Document not found
+ *       500:
+ *         description: Internal server error
+ */
+app.get('/api/knowledge/citations/:uuid/context', async (req, res) => {
+  try {
+    const { uuid } = req.params;
+    const chunkIndicesParam = req.query.chunk_indices as string;
+
+    if (!chunkIndicesParam) {
+      return res.status(400).json({ error: 'chunk_indices query parameter required' });
+    }
+
+    const chunkIndices = chunkIndicesParam.split(',').map(i => parseInt(i.trim(), 10)).filter(i => !isNaN(i));
+
+    if (chunkIndices.length === 0) {
+      return res.status(400).json({ error: 'Invalid chunk_indices format' });
+    }
+
+    const citationService = (global as any).citationService;
+    if (!citationService) {
+      return res.status(500).json({ error: 'Citation service not available' });
+    }
+
+    const context = await citationService.getContext(uuid, chunkIndices);
+
+    if (!context) {
+      return res.status(404).json({ error: 'Document not found or no chunks available' });
+    }
+
+    return res.json(context);
+  } catch (error) {
+    logger.error('Get citation context error:', error);
+    return res.status(500).json({
+      error: 'Failed to get citation context',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
 
 /**
  * @swagger

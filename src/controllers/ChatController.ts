@@ -320,6 +320,9 @@ export class ChatController {
           const aiService = (this.chatManager as any).aiService;
           let knowledgeResults: string | null = null;
           
+          // Store sources for citation (declare outside the scope)
+          const sources: any[] = [];
+          
           // Get conversation to extract company_id for knowledge base search
           const companyIdRaw = (req as AuthenticatedRequest).profile?.companyId || conversation?.organizationId;
           const companyId = companyIdRaw ? (typeof companyIdRaw === 'string' ? parseInt(companyIdRaw, 10) : companyIdRaw) : undefined;
@@ -342,6 +345,36 @@ export class ChatController {
                   const content = result.content || '';
                   if (content.trim()) {
                     knowledgeResults += `- ${title}: ${content}\n`;
+                    
+                    // Extract chunk indices from metadata.chunk_range (e.g., "0-2" -> [0,1,2])
+                    let chunkIndices: number[] = [];
+                    if (result.metadata?.chunk_range) {
+                      const [start, end] = result.metadata.chunk_range.split('-').map((n: string) => parseInt(n, 10));
+                      if (!isNaN(start) && !isNaN(end)) {
+                        for (let i = start; i <= end; i++) {
+                          chunkIndices.push(i);
+                        }
+                      }
+                    }
+                    
+                    // Add to sources array (deduplicate by document_uuid)
+                    if (!sources.find(s => s.document_uuid === result.id)) {
+                      sources.push({
+                        document_uuid: result.id,
+                        document_title: title,
+                        chunk_indices: chunkIndices
+                      });
+                    } else {
+                      const existing = sources.find(s => s.document_uuid === result.id);
+                      if (existing) {
+                        // Merge chunk indices
+                        chunkIndices.forEach(idx => {
+                          if (!existing.chunk_indices.includes(idx)) {
+                            existing.chunk_indices.push(idx);
+                          }
+                        });
+                      }
+                    }
                   }
                 });
                 
@@ -385,12 +418,23 @@ export class ChatController {
           for await (const { chunk, done, fullContent } of stream) {
             chunkCount++;
             
-            // Always send the chunk (even if empty with done flag)
+            // On last chunk, include sources (only if we actually have useful knowledge results)
+            // Don't send sources if LLM couldn't answer or apologized
+            const shouldIncludeSources = done && sources && sources.length > 0 && knowledgeResults && knowledgeResults.trim().length > 0;
+            
             const chunkData = JSON.stringify({
               type: 'chunk',
               content: chunk,
-              done: done || false // Include done flag
+              done: done || false,
+              sources: shouldIncludeSources ? sources : undefined
             });
+            
+            // Log sources on last chunk for debugging
+            if (shouldIncludeSources) {
+              logger.info(`📚 Sending sources with last chunk: ${JSON.stringify(sources)}`);
+            } else if (done && sources && sources.length > 0) {
+              logger.info(`⚠️  Sources available but not sent (no knowledge results used)`);
+            }
             
             res.write(`data: ${chunkData}\n\n`);
             if (res.flush) res.flush();
@@ -1253,7 +1297,8 @@ export class ChatController {
       const chunkData = JSON.stringify({
         type: 'chunk',
         content: chunk,
-        done: isLastChunk // Mark last chunk with done: true
+        done: isLastChunk, // Mark last chunk with done: true
+        sources: undefined // Intent responses have no sources
       });
       res.write(`data: ${chunkData}\n\n`);
       

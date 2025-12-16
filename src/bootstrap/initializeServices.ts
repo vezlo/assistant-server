@@ -2,6 +2,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import logger from '../config/logger';
 import { UnifiedStorage } from '../storage/UnifiedStorage';
 import { KnowledgeBaseService } from '../services/KnowledgeBaseService';
+import { CitationService } from '../services/CitationService';
 import { AIService } from '../services/AIService';
 import { ChatManager } from '../services/ChatManager';
 import { ChatController } from '../controllers/ChatController';
@@ -30,6 +31,7 @@ export interface InitializedCoreServices {
     chatManager: ChatManager;
     apiKeyService: ApiKeyService;
     companyService: CompanyService;
+    citationService: CitationService;
   };
   controllers: {
     chatController: ChatController;
@@ -82,6 +84,8 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
     supabase,
     tableName: knowledgeTableName
   });
+
+  const citationService = new CitationService(supabase, tablePrefix);
 
   // Initialize V2 service for adjacent chunk retrieval
 
@@ -151,10 +155,14 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
   const companyService = new CompanyService(storage.company);
   const companyController = new CompanyController(companyService);
 
+  // Store citation service globally for public API access
+  (global as any).citationService = citationService;
+
   return {
     services: {
       storage,
       knowledgeBase,
+      citationService,
       aiService,
       chatManager,
       apiKeyService,
