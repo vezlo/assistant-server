@@ -54,13 +54,17 @@ INSERT INTO knex_migrations (name, batch, migration_time)
 SELECT '007_add_updated_at_to_feedback.ts', 1, NOW()
 WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '007_add_updated_at_to_feedback.ts');
 
-INSERT INTO knex_migrations (name, batch, migration_time) 
+INSERT INTO knex_migrations (name, batch, migration_time)
 SELECT '008_add_conversation_stats_rpc.ts', 1, NOW()
 WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '008_add_conversation_stats_rpc.ts');
 
-INSERT INTO knex_migrations (name, batch, migration_time) 
+INSERT INTO knex_migrations (name, batch, migration_time)
 SELECT '009_add_archived_at_column.ts', 1, NOW()
 WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '009_add_archived_at_column.ts');
+
+INSERT INTO knex_migrations (name, batch, migration_time)
+SELECT '009_add_response_mode.ts', 1, NOW()
+WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '009_add_response_mode.ts');
 
 -- Set migration lock to unlocked (0 = unlocked, 1 = locked)
 INSERT INTO knex_migrations_lock (index, is_locked) 
@@ -88,6 +92,7 @@ CREATE TABLE IF NOT EXISTS vezlo_companies (
   uuid UUID DEFAULT gen_random_uuid() UNIQUE NOT NULL,
   name TEXT NOT NULL,
   domain TEXT UNIQUE,
+  response_mode TEXT DEFAULT 'user' NOT NULL, -- Added in migration 009
   created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
@@ -584,7 +589,7 @@ BEGIN
   FROM vezlo_conversations
   WHERE company_id = p_company_id
   AND deleted_at IS NULL;
-  
+
   RETURN result;
 END;
 $$;
@@ -606,7 +611,7 @@ BEGIN
   INTO result
   FROM vezlo_message_feedback
   WHERE company_id = p_company_id;
-  
+
   RETURN result;
 END;
 $$;

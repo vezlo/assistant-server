@@ -1,3 +1,5 @@
+import { ResponseMode } from '../config/responseModes';
+
 export interface AIServiceConfig {
   openaiApiKey: string;
   organizationName?: string;
@@ -23,6 +25,7 @@ export interface ChatContext {
   threadId?: string;
   conversationHistory?: ChatMessage[];
   metadata?: Record<string, any>;
+  responseMode?: ResponseMode;
 }
 
 export interface ChatMessage {

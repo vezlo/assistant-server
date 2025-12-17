@@ -8,6 +8,7 @@ import {
 } from '../types';
 import { KnowledgeBaseService } from './KnowledgeBaseService';
 import logger from '../config/logger';
+import { RESPONSE_MODE_INSTRUCTIONS, ResponseMode, RESPONSE_MODES } from '../config/responseModes';
 
 export class AIService {
   private openai: OpenAI;
@@ -36,7 +37,6 @@ export class AIService {
     this.knowledgeBaseService = service;
     this.systemPrompt = this.buildSystemPrompt();
   }
-
 
   private buildSystemPrompt(): string {
     const orgName = this.config.organizationName || 'Your Organization';
@@ -93,6 +93,7 @@ The knowledge base contains curated content ingested through the src-to-kb pipel
 5. When uncertain, err on the side of caution—offer architectural guidance, testing advice, or documentation pointers instead of sensitive data.`;
   }
 
+
   async generateResponse(message: string, context?: ChatContext | any): Promise<AIResponse> {
     try {
       let knowledgeResults: string = '';
@@ -128,6 +129,7 @@ The knowledge base contains curated content ingested through the src-to-kb pipel
       }
 
       // Build system message with clear indication of knowledge base status
+
       const systemContent = this.systemPrompt + 
         (hasKnowledgeContext 
           ? knowledgeResults 
@@ -224,10 +226,18 @@ The knowledge base contains curated content ingested through the src-to-kb pipel
       }
 
       // Build system message with clear indication of knowledge base status
+      const responseMode = (context?.responseMode || RESPONSE_MODES.USER) as ResponseMode;
+      let modeInstruction = '';
+      if (responseMode === RESPONSE_MODES.USER) {
+        modeInstruction = "\n" + RESPONSE_MODE_INSTRUCTIONS[responseMode];
+      }
+
+
       const systemContent = this.systemPrompt + 
         (hasKnowledgeContext 
           ? knowledgeResults 
-          : '\n\n⚠️ IMPORTANT: No relevant information was found in the knowledge base for this query. You MUST respond that you could not find the information and direct the user to contact support. Do NOT attempt to answer using your general knowledge.');
+          : '\n\n⚠️ IMPORTANT: No relevant information was found in the knowledge base for this query. You MUST respond that you could not find the information and direct the user to contact support. Do NOT attempt to answer using your general knowledge.') +
+        modeInstruction;
 
       const messages: any[] = [
         {

@@ -314,6 +314,9 @@ app.get('/api/api-keys/status', requireServices, requireAuth, (req, res) => apiK
  */
 app.get('/api/company/analytics', requireServices, requireAuth, (req, res) => companyController.getAnalytics(req, res));
 
+app.get('/api/company', requireServices, requireAuth, (req, res) => companyController.getCompany(req, res));
+app.patch('/api/company', requireServices, requireAuth, (req, res) => companyController.updateCompany(req, res));
+
 // Conversation APIs (Public - No Authentication Required for Widget)
 app.post('/api/conversations', requireServices, (req, res) => chatController.createConversation(req, res));
 app.get('/api/conversations/:uuid', requireServices, requireAuth, (req, res) =>
