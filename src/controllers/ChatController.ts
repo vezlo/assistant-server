@@ -4,9 +4,11 @@ import { ChatManager } from '../services/ChatManager';
 import { UnifiedStorage } from '../storage/UnifiedStorage';
 import { AuthenticatedRequest } from '../middleware/auth';
 import logger from '../config/logger';
-import { IntentService, IntentClassificationResult } from '../services/IntentService';
+import { IntentService } from '../services/IntentService';
 import { ChatConversation, ChatMessage, StoredChatMessage } from '../types';
 import { RealtimePublisher } from '../services/RealtimePublisher';
+import { ResponseGenerationService } from '../services/ResponseGenerationService';
+import { ResponseStreamingService } from '../services/ResponseStreamingService';
 import { RESPONSE_MODES, ResponseMode } from '../config/responseModes';
 import { CompanyService } from '../services/CompanyService';
 
@@ -18,6 +20,8 @@ export class ChatController {
   private companyService: CompanyService;
   private intentService?: IntentService;
   private realtimePublisher?: RealtimePublisher;
+  private responseGenerationService: ResponseGenerationService;
+  private responseStreamingService: ResponseStreamingService;
 
   constructor(
     chatManager: ChatManager,
@@ -34,6 +38,15 @@ export class ChatController {
     this.intentService = options.intentService;
     this.realtimePublisher = options.realtimePublisher;
     this.companyService = companyService;
+
+    // Initialize services
+    const aiService = (chatManager as any).aiService;
+    this.responseGenerationService = new ResponseGenerationService(
+      this.intentService,
+      aiService,
+      this.chatHistoryLength
+    );
+    this.responseStreamingService = new ResponseStreamingService();
   }
 
   // Create a new conversation
@@ -267,11 +280,19 @@ export class ChatController {
 
   // Generate AI response for a user message
   async generateResponse(req: AuthenticatedRequest, res: Response): Promise<void> {
+    const { uuid } = req.params;
+    if (!uuid) {
+      res.status(400).json({ error: 'Message UUID is required' });
+      return;
+    }
+
+    // After validation, uuid is guaranteed to be a string - use type assertion
+    const messageUuid = uuid as string;
+
     try {
-      const { uuid } = req.params;
 
       // Get the user message by ID using the repository
-      const userMessage = await this.storage.getMessageById(uuid);
+      const userMessage = await this.storage.getMessageById(messageUuid);
       
       if (!userMessage) {
         res.status(404).json({ error: 'Message not found' });
@@ -284,7 +305,7 @@ export class ChatController {
       // Get conversation context (recent messages)
       // Exclude the current user message to avoid duplication (it's added separately as the query)
       const allMessages = await this.chatManager.getRecentMessages(conversationId, this.chatHistoryLength + 1);
-      const messages = allMessages.filter(msg => msg.id !== uuid).slice(-this.chatHistoryLength);
+      const messages = allMessages.filter(msg => msg.id !== messageUuid).slice(-this.chatHistoryLength);
       logger.info(`📜 Retrieved ${messages.length} message(s) from conversation history (limit: ${this.chatHistoryLength})`);
       
       const conversation = await this.storage.getConversation(conversationId);
@@ -298,11 +319,8 @@ export class ChatController {
         return;
       }
 
-      // Set up Server-Sent Events (SSE) headers for streaming (always stream, consistent format)
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-      res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+      // Set up Server-Sent Events (SSE) headers for streaming
+      this.responseStreamingService.setupSSEHeaders(res);
 
       // Get company settings for response mode
       let responseMode: ResponseMode = RESPONSE_MODES.USER;
@@ -315,118 +333,50 @@ export class ChatController {
       }
 
       // Run intent classification to decide handling strategy
-      const intentResult = await this.classifyIntent(userMessageContent, messages, responseMode);
-      const intentResponse = await this.handleIntentResult(intentResult, userMessage, conversationId, conversation);
+      const intentResult = await this.responseGenerationService.classifyIntent(userMessageContent, messages, responseMode);
+      const intentResponse = this.responseGenerationService.handleIntentResult(intentResult, userMessageContent);
 
       let accumulatedContent = '';
       let assistantMessageId: string | undefined;
+      let sources: Array<{ document_uuid: string; document_title: string; chunk_indices: number[] }> = [];
 
       try {
         // If intent returned a response (non-knowledge intent), stream it
         if (intentResponse) {
           logger.info(`📤 Streaming intent response for: ${intentResult.intent}`);
-          await this.streamTextContent(intentResponse, res);
+          await this.responseStreamingService.streamTextContent(intentResponse, res);
           accumulatedContent = intentResponse;
         } else {
           // Knowledge intent - proceed with RAG flow and stream AI response
           logger.info('📚 Streaming knowledge-based response');
-          
-          // Get knowledge base search results if available
-          const aiService = (this.chatManager as any).aiService;
 
-          let knowledgeResults: string | null = null;
-          
           // Get conversation to extract company_id for knowledge base search
-          const companyIdRaw = (req as AuthenticatedRequest).profile?.companyId || conversation?.organizationId;
+          const companyIdRaw = req.profile?.companyId || conversation?.organizationId;
           const companyId = companyIdRaw ? (typeof companyIdRaw === 'string' ? parseInt(companyIdRaw, 10) : companyIdRaw) : undefined;
           
-          if (aiService && aiService.knowledgeBaseService) {
-            try {
-              logger.info(`🔍 Searching KB: query="${userMessageContent.substring(0, 50)}...", companyId=${companyId}`);
-              
-              const searchResults = await aiService.knowledgeBaseService.search(userMessageContent, {
-                limit: 5,
-                company_id: companyId
-              });
-
-              logger.info(`📊 Found knowledge base results: ${searchResults.length}`);
-
-              if (searchResults.length > 0) {
-                knowledgeResults = '\n\nRelevant information from knowledge base:\n';
-                searchResults.forEach((result: any) => {
-                  const title = result.title || 'Untitled';
-                  const content = result.content || '';
-                  if (content.trim()) {
-                    knowledgeResults += `- ${title}: ${content}\n`;
-                  }
-                });
-                
-                // Verify we actually have meaningful content (not just the header)
-                const headerLength = '\n\nRelevant information from knowledge base:\n'.length;
-                if (knowledgeResults.length > headerLength + 10) {
-                  logger.info(`✅ Knowledge context prepared (${knowledgeResults.length} chars, ${searchResults.length} results)`);
-                  // Log first 200 chars for debugging
-                  logger.info(`📝 Knowledge preview: ${knowledgeResults.substring(0, 200)}...`);
-                } else {
-                  logger.warn(`⚠️  Knowledge results found but content is empty or too short (${knowledgeResults.length} chars), treating as no results`);
-                  knowledgeResults = '';
-                }
-              } else {
-                knowledgeResults = '';
-                logger.info('⚠️  No knowledge base results found; will return appropriate fallback response');
-              }
-            } catch (error) {
-              console.error('❌ Failed to search knowledge base:', error);
-              logger.error('Failed to search knowledge base:', error);
-              knowledgeResults = null;
-            }
-          } else {
-            logger.warn('⚠️  AI service or knowledge base service not available');
-          }
+          // Search knowledge base and extract sources
+          const { knowledgeResults, sources: extractedSources } = await this.responseGenerationService.searchKnowledgeBase(
+            userMessageContent,
+            companyId
+          );
+          sources = extractedSources;
           
           // Build context for AI
-          const chatContext = {
-            conversationHistory: messages.map(msg => ({
-              role: msg.role as 'user' | 'assistant' | 'system',
-              content: msg.content
-            })),
-            knowledgeResults: knowledgeResults ?? undefined,
-            responseMode
-          };
+          const chatContext = this.responseGenerationService.buildChatContext(messages, responseMode, knowledgeResults);
+          const aiService = this.responseGenerationService.getAIService();
+
+          if (!aiService) {
+            throw new Error('AI service not available');
+          }
 
           // Stream response from OpenAI
-          logger.info('🔄 Starting OpenAI stream...');
           const stream = aiService.generateResponseStream(userMessageContent, chatContext);
-          let chunkCount = 0;
-
-          for await (const { chunk, done, fullContent } of stream) {
-            chunkCount++;
-            
-            // Always send the chunk (even if empty with done flag)
-            const chunkData = JSON.stringify({
-              type: 'chunk',
-              content: chunk,
-              done: done || false // Include done flag
-            });
-            
-            res.write(`data: ${chunkData}\n\n`);
-            if (res.flush) res.flush();
-            
-            // Update accumulated content
-            if (chunk) {
-              accumulatedContent += chunk;
-            }
-            
-            // Log first and last chunks
-            if (chunkCount === 1) {
-              logger.info(`📤 First chunk sent: "${chunk.substring(0, 30)}..."`);
-            }
-            
-            if (done && fullContent) {
-              accumulatedContent = fullContent;
-              logger.info(`🏁 Stream complete: ${chunkCount} chunks sent, ${fullContent.length} total chars`);
-            }
-          }
+          accumulatedContent = await this.responseStreamingService.streamAIResponse(
+            stream,
+            res,
+            sources,
+            knowledgeResults
+          );
         }
 
         // Save the message after streaming completes
@@ -434,30 +384,23 @@ export class ChatController {
           const assistantMessage = await this.saveAssistantMessage({
             conversation,
             conversationId,
-            parentMessageId: uuid,
+            parentMessageId: messageUuid,
             content: accumulatedContent,
             toolResults: []
           });
 
           assistantMessageId = assistantMessage.id;
 
-          // Send completion event with final message metadata (no content - already streamed)
-          const completionData = JSON.stringify({
-            type: 'completion',
-            uuid: assistantMessage.id,
-            parent_message_uuid: uuid,
-            status: 'completed',
-            created_at: assistantMessage.createdAt.toISOString()
-          });
-          res.write(`data: ${completionData}\n\n`);
+          // Send completion event with final message metadata
+          // Use non-null assertion since both are guaranteed to exist at this point
+          this.responseStreamingService.sendCompletionEvent(res, assistantMessage.id!, messageUuid, assistantMessage.createdAt);
         } catch (saveError) {
           logger.error('Failed to save assistant message:', saveError);
-          const errorData = JSON.stringify({
-            type: 'error',
-            error: 'Failed to save message',
-            message: saveError instanceof Error ? saveError.message : 'Unknown error'
-          });
-          res.write(`data: ${errorData}\n\n`);
+          this.responseStreamingService.sendErrorEvent(
+            res,
+            'Failed to save message',
+            saveError instanceof Error ? saveError.message : 'Unknown error'
+          );
         }
 
         // Close the stream
@@ -468,12 +411,11 @@ export class ChatController {
         
         // Try to send error to client if connection is still open
         try {
-          const errorData = JSON.stringify({
-            type: 'error',
-            error: 'Failed to generate response',
-            message: streamError instanceof Error ? streamError.message : 'Unknown error'
-          });
-          res.write(`data: ${errorData}\n\n`);
+          this.responseStreamingService.sendErrorEvent(
+            res,
+            'Failed to generate response',
+            streamError instanceof Error ? streamError.message : 'Unknown error'
+          );
           res.end();
         } catch (writeError) {
           logger.error('Failed to send error to client:', writeError);
@@ -486,7 +428,7 @@ export class ChatController {
             await this.saveAssistantMessage({
               conversation,
               conversationId,
-              parentMessageId: uuid,
+              parentMessageId: messageUuid,
               content: accumulatedContent,
               toolResults: []
             });
@@ -508,12 +450,11 @@ export class ChatController {
       } else {
         // Headers already sent, try to send SSE error
         try {
-          const errorData = JSON.stringify({
-            type: 'error',
-            error: 'Failed to generate response',
-            message: error instanceof Error ? error.message : 'Unknown error'
-          });
-          res.write(`data: ${errorData}\n\n`);
+          this.responseStreamingService.sendErrorEvent(
+            res,
+            'Failed to generate response',
+            error instanceof Error ? error.message : 'Unknown error'
+          );
           res.end();
         } catch (writeError) {
           logger.error('Failed to send error to client:', writeError);
@@ -545,7 +486,9 @@ export class ChatController {
       }
 
       const toIso = (date?: Date) => (date ? date.toISOString() : null);
-      const status = conversation.closedAt
+      const status = conversation.archivedAt
+        ? 'archived'
+        : conversation.closedAt
         ? 'closed'
         : conversation.joinedAt
         ? 'in_progress'
@@ -562,6 +505,7 @@ export class ChatController {
         joined_at: toIso(conversation.joinedAt),
         responded_at: toIso(conversation.respondedAt),
         closed_at: toIso(conversation.closedAt),
+        archived_at: toIso(conversation.archivedAt),
         last_message_at: toIso(conversation.lastMessageAt),
         status
       });
@@ -838,6 +782,83 @@ export class ChatController {
     }
   }
 
+  // Archive conversation
+  async archiveConversation(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user || !req.profile) {
+        res.status(401).json({ error: 'Authentication required' });
+        return;
+      }
+
+      const { uuid } = req.params;
+      const conversation = await this.storage.getConversation(uuid);
+
+      if (!conversation) {
+        res.status(404).json({ error: 'Conversation not found' });
+        return;
+      }
+
+      if (conversation.organizationId !== req.profile.companyId) {
+        res.status(404).json({ error: 'Conversation not found' });
+        return;
+      }
+
+      if (!conversation.closedAt) {
+        res.status(400).json({ error: 'Conversation must be closed before archiving' });
+        return;
+      }
+
+      if (conversation.archivedAt) {
+        res.status(400).json({ error: 'Conversation is already archived' });
+        return;
+      }
+
+      const archivedAt = new Date();
+
+      await this.storage.updateConversation(uuid, {
+        archivedAt
+      });
+
+      if (this.realtimePublisher) {
+        try {
+          const { data: company } = await this.supabase
+            .from('vezlo_companies')
+            .select('uuid')
+            .eq('id', conversation.organizationId)
+            .single();
+
+          if (company?.uuid) {
+            await this.realtimePublisher.publish(
+              `company:${company.uuid}:conversations`,
+              'conversation:archived',
+              {
+                conversation_uuid: uuid,
+                conversation_update: {
+                  archived_at: archivedAt.toISOString(),
+                  status: 'archived'
+                }
+              }
+            );
+          }
+        } catch (error) {
+          logger.error('[ChatController] Failed to publish archive conversation update:', error);
+        }
+      }
+
+      res.json({
+        success: true,
+        archived_at: archivedAt.toISOString()
+      });
+
+    } catch (error) {
+      logger.error('Archive conversation error:', error);
+      res.status(500).json({
+        error: 'Failed to archive conversation',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
   // Send agent message
   async sendAgentMessage(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
@@ -951,6 +972,8 @@ export class ChatController {
       const offset = (page - 1) * pageSize;
       const orderParam = (req.query.order_by as string) || 'last_message_at';
       const orderBy = orderParam === 'created_at' ? 'updated_at' : 'last_message_at';
+      const statusParam = req.query.status as string;
+      const status = statusParam === 'archived' ? 'archived' : statusParam === 'active' ? 'active' : undefined;
 
       const { conversations, total } = await this.storage.getUserConversations(
         req.user!.id,
@@ -958,7 +981,8 @@ export class ChatController {
         {
           limit: pageSize,
           offset,
-          orderBy: orderBy as 'last_message_at' | 'updated_at'
+          orderBy: orderBy as 'last_message_at' | 'updated_at',
+          status
         }
       );
 
@@ -974,8 +998,11 @@ export class ChatController {
           joined_at: toIso(conversation.joinedAt),
           responded_at: toIso(conversation.respondedAt),
           closed_at: toIso(conversation.closedAt),
+          archived_at: toIso(conversation.archivedAt),
           last_message_at: toIso(conversation.lastMessageAt),
-          status: conversation.closedAt
+          status: conversation.archivedAt
+            ? 'archived'
+            : conversation.closedAt
             ? 'closed'
             : conversation.joinedAt
             ? 'in_progress'
@@ -1120,99 +1147,6 @@ export class ChatController {
     }
   }
 
-  private async classifyIntent(message: string, history: ChatMessage[], responseMode: ResponseMode = RESPONSE_MODES.USER): Promise<IntentClassificationResult> {
-    if (!this.intentService) {
-      return {
-        intent: 'knowledge',
-        needsGuardrail: false,
-        contactEmail: null
-      };
-    }
-
-    const resolvedHistory = Array.isArray(history) ? history : [];
-
-    logger.info('🧭 Classifying user intent...');
-
-    return this.intentService.classify({
-      message,
-      conversationHistory: resolvedHistory,
-      responseMode
-    });
-  }
-
-  /**
-   * Handle intent classification result
-   * Returns response content if non-knowledge intent, null if knowledge intent
-   */
-  private async handleIntentResult(
-    result: IntentClassificationResult,
-    userMessage: StoredChatMessage,
-    conversationId: string,
-    conversation: ChatConversation | null
-  ): Promise<string | null> {
-    if (result.needsGuardrail && result.intent !== 'guardrail') {
-      logger.info('🛡️ Guardrail triggered');
-      return `I can help with documentation or implementation guidance, but I can't share credentials or confidential configuration. Please contact your system administrator or support for access.`;
-    }
-
-    logger.info(`🧾 Intent result: ${result.intent}${result.needsGuardrail ? ' (guardrail triggered)' : ''}`);
-
-    // For non-knowledge intents, return the response content to be streamed
-    if (result.intent !== 'knowledge') {
-      const responseContent = result.response || this.getFallbackResponse(result.intent);
-      return responseContent;
-    }
-
-    // Knowledge intent - proceed to RAG flow (return null to indicate streaming will happen later)
-    logger.info('📚 Intent requires knowledge lookup; proceeding with RAG flow.');
-    return null;
-  }
-
-  /**
-   * Stream text content word by word to simulate streaming
-   * This ensures consistent SSE format for all responses
-   */
-  private async streamTextContent(content: string, res: Response): Promise<void> {
-    const words = content.split(' ');
-    const chunkSize = 2; // Stream 2 words at a time for smoother experience
-    const totalChunks = Math.ceil(words.length / chunkSize);
-    
-    for (let i = 0; i < words.length; i += chunkSize) {
-      const chunk = words.slice(i, i + chunkSize).join(' ') + (i + chunkSize < words.length ? ' ' : '');
-      const chunkIndex = Math.floor(i / chunkSize) + 1;
-      const isLastChunk = chunkIndex === totalChunks;
-      
-      const chunkData = JSON.stringify({
-        type: 'chunk',
-        content: chunk,
-        done: isLastChunk // Mark last chunk with done: true
-      });
-      res.write(`data: ${chunkData}\n\n`);
-      
-      // Flush the response to ensure chunks are sent immediately
-      if (res.flush) {
-        res.flush();
-      }
-      
-      // Delay for smooth streaming effect (30ms for better visibility)
-      await new Promise(resolve => setTimeout(resolve, 30));
-    }
-  }
-
-  private getFallbackResponse(intent: string): string {
-    // Fallback responses in case LLM doesn't generate one (shouldn't happen, but safety net)
-    const fallbacks: Record<string, string> = {
-      greeting: 'Hello! How can I help you today?',
-      acknowledgment: "You're welcome! Let me know if you need anything else.",
-      personality: `I'm ${process.env.ASSISTANT_NAME || 'AI Assistant'}, your AI assistant for ${process.env.ORGANIZATION_NAME || 'Your Organization'}.`,
-      clarification: "I'm not sure I understood. Could you clarify what you need help with?",
-      guardrail: "I can help with documentation or implementation guidance, but I can't share credentials or confidential configuration.",
-      human_support_request: "I'd be happy to connect you with our support team. Could you please provide your email address?",
-      human_support_email: "Thank you! Our support team will reach out to you shortly."
-    };
-    
-    return fallbacks[intent] || "I'm here to help. What would you like to know?";
-  }
 
   private async respondWithAssistantMessage(
     payload: {

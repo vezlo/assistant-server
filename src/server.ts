@@ -95,7 +95,7 @@ async function initializeServices() {
   try {
     logger.info('Initializing Vezlo services...');
 
-    const { controllers } = initializeCoreServices({
+    const { controllers, services } = initializeCoreServices({
       supabase,
       tablePrefix: 'vezlo',
       knowledgeTableName: 'vezlo_knowledge_items'
@@ -464,6 +464,12 @@ app.get('/api/api-keys/status', authenticateUser(supabase), (req, res) => apiKey
  *           enum: [last_message_at, created_at]
  *           default: last_message_at
  *         description: Sort conversations by latest activity or creation time (always descending)
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [active, archived]
+ *         description: Filter by conversation status (active excludes archived, archived shows only archived)
  *     responses:
  *       200:
  *         description: Conversations retrieved successfully
@@ -717,6 +723,84 @@ app.post('/api/conversations/:uuid/messages/agent', authenticateUser(supabase), 
  */
 app.post('/api/conversations/:uuid/close', authenticateUser(supabase), (req, res) =>
   (chatController as any).closeConversation(req as AuthenticatedRequest, res)
+);
+
+/**
+ * @swagger
+ * /api/conversations/{uuid}/archive:
+ *   post:
+ *     summary: Archive conversation
+ *     description: Archive a closed conversation and publish realtime update
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: uuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Conversation UUID
+ *     responses:
+ *       200:
+ *         description: Conversation archived successfully
+ *       400:
+ *         description: Invalid request (conversation must be closed first or already archived)
+ *       401:
+ *         description: Not authenticated
+ *       404:
+ *         description: Conversation not found
+ *       500:
+ *         description: Internal server error
+ */
+app.post('/api/conversations/:uuid/archive', authenticateUser(supabase), (req, res) =>
+  (chatController as any).archiveConversation(req as AuthenticatedRequest, res)
+);
+
+/**
+ * @swagger
+ * /api/knowledge/citations/{uuid}/context:
+ *   get:
+ *     summary: Get citation context for a knowledge item
+ *     description: Public API to fetch contextual content for a knowledge document citation. Returns full content if available in knowledge_items table, otherwise fetches relevant chunks with ±2 adjacent chunks for context.
+ *     tags: [Knowledge]
+ *     parameters:
+ *       - in: path
+ *         name: uuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Knowledge item UUID
+ *       - in: query
+ *         name: chunk_indices
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Comma-separated list of chunk indices to retrieve (e.g., "0,1,2")
+ *     responses:
+ *       200:
+ *         description: Citation context retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 document_title:
+ *                   type: string
+ *                 document_type:
+ *                   type: string
+ *                 content:
+ *                   type: string
+ *                   description: Full document content or combined chunks with adjacent context
+ *       400:
+ *         description: Invalid request (missing chunk_indices parameter)
+ *       404:
+ *         description: Document not found or no chunks available
+ *       500:
+ *         description: Internal server error
+ */
+app.get('/api/knowledge/citations/:uuid/context', (req, res) =>
+  (knowledgeController as any).getCitationContext(req, res)
 );
 
 /**

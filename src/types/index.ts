@@ -82,6 +82,7 @@ export interface ChatConversation {
   joinedAt?: Date;
   respondedAt?: Date;
   closedAt?: Date;
+  archivedAt?: Date;
   lastMessageAt?: Date;
   status?: string;
 }
@@ -109,6 +110,7 @@ export interface ConversationListOptions {
   limit?: number;
   offset?: number;
   orderBy?: 'last_message_at' | 'updated_at';
+  status?: 'active' | 'archived';
 }
 
 export interface ConversationListResult {

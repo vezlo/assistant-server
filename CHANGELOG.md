@@ -1,14 +1,40 @@
-## [2.7.0] - 2025-12-12
+## [2.9.0] - 2025-12-17
 
 ### Added
 - **Company APIs**: New endpoints for managing company settings and retrieving analytics.
-    - `GET /api/company`: Retrieve authenticated company details (ID, name, response mode).
-    - `PATCH /api/company`: Update company settings (e.g., toggle `response_mode` between "user" and "developer").
+  - `GET /api/company`: Retrieve authenticated company details (ID, name, response mode).
+  - `PATCH /api/company`: Update company settings (e.g., toggle `response_mode` between "user" and "developer").
 - **Response Modes**: Introduced configurable AI personality modes:
-    - `user`: Standard friendly assistant (default).
-    - `developer`: Technical, concise, and code-focused responses.
-- Database migration 009: Added `response_mode` column to `vezlo_companies` table.
+  - `user`: Standard friendly assistant (default).
+  - `developer`: Technical, concise, and code-focused responses.
+- Database migration 010: Added `response_mode` column to `vezlo_companies` table.
 
+## [2.8.0] - 2025-12-17
+
+### Added
+- **Citation System**: New citation API endpoint `GET /api/knowledge/citations/:uuid/context` for fetching source document content
+- **CitationService**: Service to retrieve full document content or contextual chunks with adjacent context
+- **Sources in AI Responses**: AI streaming responses now include `sources` array with document UUIDs and titles in final chunk
+- **Smart Content Retrieval**: Citation API automatically uses full content if available, otherwise fetches relevant chunks ±2 adjacent chunks for context
+
+### Changed
+- AI response streaming includes sources array when knowledge base results are used
+- Citation API returns `content` field instead of `chunks` array for simpler frontend handling
+- Sources only sent when knowledge results are actually provided to LLM
+
+## [2.7.0] - 2025-12-16
+
+### Added
+- **Archive Conversations**: New `POST /api/conversations/:uuid/archive` endpoint to archive closed conversations
+- **Status Filtering**: `GET /api/conversations` now supports `?status=active|archived` query parameter
+- Database migration (009) adds `archived_at` timestamp column with index
+- Archive realtime event publishing via Socket.IO
+
+### Changed
+- Conversation status calculation now includes `archived` state (archived > closed > in_progress > open)
+- `archived_at` field added to all conversation response schemas
+- Both `api/index.ts` and `server.ts` routes updated with archive endpoint
+- Swagger documentation updated with archive endpoint and status filter
 
 ## [2.6.0] - 2025-12-12
 

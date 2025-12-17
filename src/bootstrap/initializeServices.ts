@@ -2,6 +2,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import logger from '../config/logger';
 import { UnifiedStorage } from '../storage/UnifiedStorage';
 import { KnowledgeBaseService } from '../services/KnowledgeBaseService';
+import { CitationService } from '../services/CitationService';
 import { AIService } from '../services/AIService';
 import { ChatManager } from '../services/ChatManager';
 import { ChatController } from '../controllers/ChatController';
@@ -30,6 +31,7 @@ export interface InitializedCoreServices {
     chatManager: ChatManager;
     apiKeyService: ApiKeyService;
     companyService: CompanyService;
+    citationService: CitationService;
   };
   controllers: {
     chatController: ChatController;
@@ -82,6 +84,8 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
     supabase,
     tableName: knowledgeTableName
   });
+
+  const citationService = new CitationService(supabase, tablePrefix);
 
   // Initialize V2 service for adjacent chunk retrieval
 
@@ -145,7 +149,7 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
     realtimePublisher
   });
 
-  const knowledgeController = new KnowledgeController(knowledgeBase, aiService);
+  const knowledgeController = new KnowledgeController(knowledgeBase, aiService, citationService);
   const authController = new AuthController(supabase);
   const apiKeyService = new ApiKeyService(supabase);
   const apiKeyController = new ApiKeyController(apiKeyService);
@@ -155,6 +159,7 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
     services: {
       storage,
       knowledgeBase,
+      citationService,
       aiService,
       chatManager,
       apiKeyService,

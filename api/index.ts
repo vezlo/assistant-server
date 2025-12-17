@@ -105,7 +105,7 @@ async function initializeServices() {
     const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY!;
     realtimePublisher = new RealtimePublisher(process.env.SUPABASE_URL!, supabaseKey);
 
-    const { controllers } = initializeCoreServices({
+    const { controllers, services } = initializeCoreServices({
       supabase,
       tablePrefix: 'vezlo',
       knowledgeTableName: 'vezlo_knowledge_items'
@@ -334,6 +334,9 @@ app.post('/api/conversations/:uuid/messages/agent', requireServices, requireAuth
 app.post('/api/conversations/:uuid/close', requireServices, requireAuth, (req, res) =>
   (chatController as any).closeConversation(req, res)
 );
+app.post('/api/conversations/:uuid/archive', requireServices, requireAuth, (req, res) =>
+  (chatController as any).archiveConversation(req, res)
+);
 app.delete('/api/conversations/:uuid', requireServices, requireAuth, (req, res) => chatController.deleteConversation(req, res));
 
 // Message APIs (Public - No Authentication Required for Widget)
@@ -355,6 +358,12 @@ app.post('/api/search', requireServices, requireUserOrApiKey, (req, res) => know
 app.get('/api/knowledge/items/:uuid', requireServices, requireAuth, (req, res) => knowledgeController.getItem(req, res));
 app.put('/api/knowledge/items/:uuid', requireServices, requireAuth, (req, res) => knowledgeController.updateItem(req, res));
 app.delete('/api/knowledge/items/:uuid', requireServices, requireAuth, (req, res) => knowledgeController.deleteItem(req, res));
+
+// Citation API (Public - no auth required for widget access)
+// Swagger docs are in server.ts - swagger-jsdoc picks them up from there
+app.get('/api/knowledge/citations/:uuid/context', requireServices, (req, res) =>
+  (knowledgeController as any).getCitationContext(req, res)
+);
 
 // Migration APIs (for development/setup)
 app.get('/api/migrate', requireServices, async (req, res) => {
