@@ -306,7 +306,7 @@ export class ChatController {
 
       // Get company settings for response mode
       let responseMode: ResponseMode = RESPONSE_MODES.USER;
-      const companyId = (req as AuthenticatedRequest).profile?.companyId;
+      const companyId = conversation?.organizationId;
       if (companyId) {
         const company = await this.companyService.getCompany(companyId);
         if (company?.response_mode) {
