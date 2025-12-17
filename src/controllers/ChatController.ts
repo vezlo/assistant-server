@@ -357,6 +357,7 @@ export class ChatController {
           // Search knowledge base and extract sources
           const { knowledgeResults, sources: extractedSources } = await this.responseGenerationService.searchKnowledgeBase(
             userMessageContent,
+            responseMode,
             companyId
           );
           sources = extractedSources;
