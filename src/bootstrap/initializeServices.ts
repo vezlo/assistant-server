@@ -14,6 +14,8 @@ import { CompanyService } from '../services/CompanyService';
 import { CompanyController } from '../controllers/CompanyController';
 import { IntentService } from '../services/IntentService';
 import { RealtimePublisher } from '../services/RealtimePublisher';
+import { SlackService } from '../services/SlackService';
+import { SlackController } from '../controllers/SlackController';
 
 export interface ServiceInitOptions {
   supabase: SupabaseClient;
@@ -32,6 +34,7 @@ export interface InitializedCoreServices {
     apiKeyService: ApiKeyService;
     companyService: CompanyService;
     citationService: CitationService;
+    slackService: SlackService;
   };
   controllers: {
     chatController: ChatController;
@@ -39,6 +42,7 @@ export interface InitializedCoreServices {
     authController: AuthController;
     apiKeyController: ApiKeyController;
     companyController: CompanyController;
+    slackController: SlackController;
   };
   config: {
     chatHistoryLength: number;
@@ -154,6 +158,10 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
   const apiKeyController = new ApiKeyController(apiKeyService);
   const companyService = new CompanyService(storage.company);
   const companyController = new CompanyController(companyService);
+  
+  // Initialize Slack integration
+  const slackService = new SlackService();
+  const slackController = new SlackController(slackService, chatManager, storage, supabase, resolvedHistoryLength);
 
   return {
     services: {
@@ -163,14 +171,16 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
       aiService,
       chatManager,
       apiKeyService,
-      companyService
+      companyService,
+      slackService
     },
     controllers: {
       chatController,
       knowledgeController,
       authController,
       apiKeyController,
-      companyController
+      companyController,
+      slackController
     },
     config: {
       chatHistoryLength: resolvedHistoryLength

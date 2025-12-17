@@ -42,6 +42,7 @@
     "seed:run": "knex seed:run"
   },
   "dependencies": {
+    "@slack/bolt": "^4.6.0",
     "@supabase/supabase-js": "^2.38.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.10",

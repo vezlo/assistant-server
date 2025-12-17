@@ -16,6 +16,7 @@ import { KnowledgeController } from './controllers/KnowledgeController';
 import { AuthController } from './controllers/AuthController';
 import { ApiKeyController } from './controllers/ApiKeyController';
 import { CompanyController } from './controllers/CompanyController';
+import { SlackController } from './controllers/SlackController';
 import { runMigrations, getMigrationStatus } from './config/knex';
 import { createClient } from '@supabase/supabase-js';
 import { initializeCoreServices } from './bootstrap/initializeServices';
@@ -90,6 +91,7 @@ let knowledgeController: KnowledgeController;
 let authController: AuthController;
 let apiKeyController: ApiKeyController;
 let companyController: CompanyController;
+let slackController: SlackController;
 
 async function initializeServices() {
   try {
@@ -107,6 +109,7 @@ async function initializeServices() {
     authController.setRealtimePublisher(realtimePublisher);
     apiKeyController = controllers.apiKeyController;
     companyController = controllers.companyController;
+    slackController = controllers.slackController;
 
     logger.info('All services initialized successfully');
   } catch (error) {
@@ -1516,6 +1519,47 @@ app.put('/api/knowledge/items/:uuid', authenticateUser(supabase), (req, res) => 
       });
     }
   }));
+
+  // Slack Integration Routes
+  /**
+   * @swagger
+   * /api/slack/events:
+   *   post:
+   *     summary: Slack events webhook
+   *     description: Receives Slack events (app mentions, DMs)
+   *     tags: [Slack]
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *     responses:
+   *       200:
+   *         description: Event processed
+   *       400:
+   *         description: Invalid request
+   */
+  app.post('/api/slack/events', express.json(), (req, res) => slackController.handleEvents(req, res));
+
+  /**
+   * @swagger
+   * /api/slack/commands:
+   *   post:
+   *     summary: Slack slash commands
+   *     description: Receives Slack slash commands
+   *     tags: [Slack]
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/x-www-form-urlencoded:
+   *           schema:
+   *             type: object
+   *     responses:
+   *       200:
+   *         description: Command processed
+   */
+  app.post('/api/slack/commands', express.urlencoded({ extended: true }), (req, res) => slackController.handleCommands(req, res));
 
   // Error handling middleware (must be after all routes)
   app.use(errorHandler);

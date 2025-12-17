@@ -29,6 +29,7 @@ import { KnowledgeController } from '../dist/src/controllers/KnowledgeController
 import { AuthController } from '../dist/src/controllers/AuthController';
 import { ApiKeyController } from '../dist/src/controllers/ApiKeyController';
 import { CompanyController } from '../dist/src/controllers/CompanyController';
+import { SlackController } from '../dist/src/controllers/SlackController';
 import { RealtimePublisher } from '../dist/src/services/RealtimePublisher';
 
 // Load environment variables
@@ -89,6 +90,7 @@ let knowledgeController: KnowledgeController;
 let authController: AuthController;
 let apiKeyController: ApiKeyController;
 let companyController: CompanyController;
+let slackController: SlackController;
 let supabase: any;
 let realtimePublisher: RealtimePublisher | null = null;
 
@@ -117,6 +119,7 @@ async function initializeServices() {
     authController.setRealtimePublisher(realtimePublisher);
     apiKeyController = controllers.apiKeyController;
     companyController = controllers.companyController;
+    slackController = controllers.slackController;
 
     servicesInitialized = true;
     logger.info('All services initialized successfully');
@@ -361,6 +364,10 @@ app.delete('/api/knowledge/items/:uuid', requireServices, requireAuth, (req, res
 app.get('/api/knowledge/citations/:uuid/context', requireServices, (req, res) =>
   (knowledgeController as any).getCitationContext(req, res)
 );
+
+// Slack Integration Routes
+app.post('/api/slack/events', express.json(), requireServices, (req, res) => slackController.handleEvents(req, res));
+app.post('/api/slack/commands', express.urlencoded({ extended: true }), requireServices, (req, res) => slackController.handleCommands(req, res));
 
 // Migration APIs (for development/setup)
 app.get('/api/migrate', requireServices, async (req, res) => {
