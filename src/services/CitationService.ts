@@ -14,13 +14,14 @@ export class CitationService {
   async getContext(documentUuid: string, chunkIndices: number[]): Promise<{
     document_title: string;
     document_type: string;
+    file_type?: string;
     content: string;
   } | null> {
     try {
       // Get document with full content
       const { data: document, error: docError } = await this.supabase
         .from(`${this.tablePrefix}_knowledge_items`)
-        .select('uuid, title, type, content')
+        .select('uuid, title, type, content, file_type')
         .eq('uuid', documentUuid)
         .single();
 
@@ -34,6 +35,7 @@ export class CitationService {
         return {
           document_title: document.title,
           document_type: document.type,
+          file_type: document.file_type || undefined,
           content: document.content
         };
       }
@@ -75,6 +77,7 @@ export class CitationService {
       return {
         document_title: document.title,
         document_type: document.type,
+        file_type: document.file_type || undefined,
         content: combinedContent
       };
 
