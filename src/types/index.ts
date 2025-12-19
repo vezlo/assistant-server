@@ -81,6 +81,8 @@ export interface ChatConversation {
   closedAt?: Date;
   archivedAt?: Date;
   lastMessageAt?: Date;
+  slack_channel_id?: string;
+  slack_thread_ts?: string;
   status?: string;
 }
 

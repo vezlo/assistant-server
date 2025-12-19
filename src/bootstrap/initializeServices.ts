@@ -161,7 +161,7 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
   
   // Initialize Slack integration
   const slackService = new SlackService();
-  const slackController = new SlackController(slackService, chatManager, storage, supabase, resolvedHistoryLength);
+  const slackController = new SlackController(slackService, chatManager, storage, resolvedHistoryLength);
 
   return {
     services: {

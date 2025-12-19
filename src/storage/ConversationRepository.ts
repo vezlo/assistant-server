@@ -23,13 +23,19 @@ export class ConversationRepository {
 
     if (conversation.id) {
       // Update existing conversation
+      const updateData: any = {
+        title: conversation.title,
+        message_count: conversation.messageCount,
+        updated_at: conversation.updatedAt || new Date().toISOString()
+      };
+
+      // Include Slack fields if present
+      if (conversation.slack_channel_id !== undefined) updateData.slack_channel_id = conversation.slack_channel_id;
+      if (conversation.slack_thread_ts !== undefined) updateData.slack_thread_ts = conversation.slack_thread_ts;
+
       const { data, error } = await this.supabase
         .from(tableName)
-        .update({
-          title: conversation.title,
-          message_count: conversation.messageCount,
-          updated_at: conversation.updatedAt || new Date().toISOString()
-        })
+        .update(updateData)
         .eq('uuid', conversation.id)
         .select()
         .single();
@@ -42,17 +48,23 @@ export class ConversationRepository {
       const companyId = conversation.organizationId ? parseInt(conversation.organizationId) || 1 : 1;
       const creatorId = parseInt(conversation.userId) || 1;
       
+      const insertData: any = {
+        company_id: companyId,
+        title: conversation.title || 'New Conversation',
+        creator_id: creatorId,
+        message_count: conversation.messageCount || 0,
+        created_at: conversation.createdAt?.toISOString() || new Date().toISOString(),
+        updated_at: conversation.updatedAt?.toISOString() || new Date().toISOString(),
+        last_message_at: conversation.lastMessageAt?.toISOString() || conversation.createdAt?.toISOString() || new Date().toISOString()
+      };
+
+      // Include Slack fields if present
+      if (conversation.slack_channel_id) insertData.slack_channel_id = conversation.slack_channel_id;
+      if (conversation.slack_thread_ts) insertData.slack_thread_ts = conversation.slack_thread_ts;
+
       const { data, error } = await this.supabase
         .from(tableName)
-        .insert({
-          company_id: companyId,
-          title: conversation.title || 'New Conversation',
-          creator_id: creatorId,
-          message_count: conversation.messageCount || 0,
-          created_at: conversation.createdAt?.toISOString() || new Date().toISOString(),
-          updated_at: conversation.updatedAt?.toISOString() || new Date().toISOString(),
-          last_message_at: conversation.lastMessageAt?.toISOString() || conversation.createdAt?.toISOString() || new Date().toISOString()
-        })
+        .insert(insertData)
         .select()
         .single();
 
@@ -164,6 +176,25 @@ export class ConversationRepository {
     };
   }
 
+  async getConversationBySlackThread(channelId: string, threadTs: string): Promise<ChatConversation | null> {
+    const tableName = this.getTableName('conversations');
+    
+    const { data, error } = await this.supabase
+      .from(tableName)
+      .select('*')
+      .eq('slack_channel_id', channelId)
+      .eq('slack_thread_ts', threadTs)
+      .is('deleted_at', null)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return null; // Not found
+      throw new Error(`Failed to get conversation by Slack thread: ${error.message}`);
+    }
+
+    return this.rowToConversation(data, true);
+  }
+
   private async rowToConversation(row: any, fetchUuids: boolean = false): Promise<ChatConversation> {
     let userId = row.creator_id?.toString() || '1';
     // IMPORTANT: organizationId should ALWAYS be the integer ID (as string), NOT the UUID
@@ -200,7 +231,9 @@ export class ConversationRepository {
       respondedAt: row.responded_at ? new Date(row.responded_at) : undefined,
       closedAt: row.closed_at ? new Date(row.closed_at) : undefined,
       archivedAt: row.archived_at ? new Date(row.archived_at) : undefined,
-      lastMessageAt: row.last_message_at ? new Date(row.last_message_at) : undefined
+      lastMessageAt: row.last_message_at ? new Date(row.last_message_at) : undefined,
+      slack_channel_id: row.slack_channel_id,
+      slack_thread_ts: row.slack_thread_ts
     };
   }
 }

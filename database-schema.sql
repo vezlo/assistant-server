@@ -62,6 +62,10 @@ INSERT INTO knex_migrations (name, batch, migration_time)
 SELECT '009_add_archived_at_column.ts', 1, NOW()
 WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '009_add_archived_at_column.ts');
 
+INSERT INTO knex_migrations (name, batch, migration_time) 
+SELECT '010_add_slack_fields.ts', 1, NOW()
+WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '010_add_slack_fields.ts');
+
 -- Set migration lock to unlocked (0 = unlocked, 1 = locked)
 INSERT INTO knex_migrations_lock (index, is_locked) 
 VALUES (1, 0)
@@ -131,6 +135,8 @@ CREATE TABLE IF NOT EXISTS vezlo_conversations (
   closed_at TIMESTAMPTZ,
   archived_at TIMESTAMPTZ,
   last_message_at TIMESTAMPTZ,
+  slack_channel_id TEXT, -- Slack integration (migration 010)
+  slack_thread_ts TEXT, -- Slack integration (migration 010)
   created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
   deleted_at TIMESTAMPTZ -- Soft delete
@@ -290,6 +296,7 @@ CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_last_message_at ON vezlo_conv
 CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_joined_at ON vezlo_conversations(joined_at);
 CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_closed_at ON vezlo_conversations(closed_at);
 CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_archived_at ON vezlo_conversations(archived_at);
+CREATE INDEX IF NOT EXISTS idx_vezlo_conversations_slack_thread ON vezlo_conversations(slack_channel_id, slack_thread_ts) WHERE slack_channel_id IS NOT NULL AND slack_thread_ts IS NOT NULL;
 
 -- Messages indexes
 CREATE INDEX IF NOT EXISTS idx_vezlo_messages_uuid ON vezlo_messages(uuid);

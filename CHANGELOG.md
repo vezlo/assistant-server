@@ -1,3 +1,12 @@
+## [2.9.0] - 2025-12-18
+
+### Added
+- **Slack Integration**: Full bot integration with app mentions, DMs, and slash commands
+- **Slack Conversation Persistence**: Slack threads now mapped to database conversations (migration 010)
+- **Database Fields**: Added `slack_channel_id` and `slack_thread_ts` to `vezlo_conversations` table
+- **Conversation History**: Slack bot uses same chat history logic as widget (configured via `CHAT_HISTORY_LENGTH`)
+- **Reaction Feedback**: Visual feedback using emoji reactions (hourglass → checkmark/X)
+
 ## [2.8.0] - 2025-12-17
 
 ### Added

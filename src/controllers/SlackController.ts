@@ -9,22 +9,17 @@ export class SlackController {
   private slackService: SlackService;
   private chatManager: ChatManager;
   private storage: UnifiedStorage;
-  private supabase: SupabaseClient;
   private historyLength: number;
-  // In-memory mapping: Slack thread -> Conversation UUID
-  private slackThreadMap: Map<string, string> = new Map();
 
   constructor(
     slackService: SlackService, 
     chatManager: ChatManager, 
     storage: UnifiedStorage,
-    supabase: SupabaseClient,
     historyLength: number
   ) {
     this.slackService = slackService;
     this.chatManager = chatManager;
     this.storage = storage;
-    this.supabase = supabase;
     this.historyLength = historyLength;
   }
 
@@ -121,36 +116,28 @@ export class SlackController {
    * Get or create conversation for Slack thread
    */
   private async getOrCreateSlackConversation(channel: string, threadTs: string, userId: string): Promise<any> {
-    const threadKey = `${channel}:${threadTs}`;
+    // Check database for existing conversation by Slack thread
+    const existingConv = await this.storage.conversations.getConversationBySlackThread(channel, threadTs);
     
-    // Check if conversation exists for this thread
-    let conversationUuid = this.slackThreadMap.get(threadKey);
-    
-    if (conversationUuid) {
-      const existingConv = await this.storage.getConversation(conversationUuid);
-      if (existingConv) {
-        logger.info(`Reusing existing conversation ${conversationUuid} for Slack thread ${threadKey}`);
-        return existingConv;
-      }
+    if (existingConv) {
+      logger.info(`Reusing existing conversation ${existingConv.id} for Slack thread ${channel}:${threadTs}`);
+      return existingConv;
     }
     
     // Create new conversation for this Slack thread
     const conversationData: any = {
-      threadId: `slack_${channel}_${threadTs}`,
-      organizationId: null,
-      metadata: {
-        source: 'slack',
-        slack_channel_id: channel,
-        slack_thread_ts: threadTs,
-        slack_user_id: userId
-      }
+      userId: userId || '1',
+      organizationId: '1',
+      title: `Slack: ${channel}`,
+      messageCount: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      slack_channel_id: channel,
+      slack_thread_ts: threadTs
     };
-    const newConversation = await this.storage.saveConversation(conversationData);
     
-    // Store mapping
-    const convId = newConversation.id || newConversation.threadId;
-    this.slackThreadMap.set(threadKey, convId);
-    logger.info(`Created new conversation ${convId} for Slack thread ${threadKey}`);
+    const newConversation = await this.storage.conversations.saveConversation(conversationData);
+    logger.info(`Created new conversation ${newConversation.id} for Slack thread ${channel}:${threadTs}`);
     
     return newConversation;
   }
@@ -164,7 +151,7 @@ export class SlackController {
 
       // 1. Get or create conversation for this Slack thread
       const conversation = await this.getOrCreateSlackConversation(channel, threadTs, userId);
-      const convId = conversation.id || conversation.threadId;
+      const convId = conversation.id!; // Use UUID as conversation ID
 
       // 2. Create user message (same as widget)
       const userMessage = await this.storage.saveMessage({
