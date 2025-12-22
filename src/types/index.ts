@@ -228,4 +228,13 @@ export interface CompanyAnalytics {
   };
 }
 
+export interface CompanyAISettings {
+  temperature?: number;
+  personality?: string;
+  response_guidelines?: string;
+  formatting_guidelines?: string;
+  interaction_etiquettes?: string;
+  scope_of_assistance?: string;
+}
+
 

@@ -4,14 +4,15 @@ import {
   ChatContext,
   AIResponse,
   DatabaseSearchResult,
-  NavigationLink
+  NavigationLink,
+  CompanyAISettings
 } from '../types';
 import { KnowledgeBaseService } from './KnowledgeBaseService';
 import logger from '../config/logger';
 
 export class AIService {
   private openai: OpenAI;
-  private systemPrompt: string;
+  private defaultSystemPrompt: string;
   private config: AIServiceConfig;
   private navigationLinks: NavigationLink[];
   private knowledgeBase: string;
@@ -29,22 +30,28 @@ export class AIService {
       this.knowledgeBaseService = config.knowledgeBaseService;
     }
 
-    this.systemPrompt = this.buildSystemPrompt();
+    this.defaultSystemPrompt = this.buildSystemPrompt();
   }
 
   setKnowledgeBaseService(service: KnowledgeBaseService): void {
     this.knowledgeBaseService = service;
-    this.systemPrompt = this.buildSystemPrompt();
+    this.defaultSystemPrompt = this.buildSystemPrompt();
   }
 
-
-  private buildSystemPrompt(): string {
+  // Generates the system prompt, optionally overriding sections with company settings
+  private buildSystemPrompt(settings?: CompanyAISettings): string {
     const orgName = this.config.organizationName || 'Your Organization';
-    const assistantName = this.config.assistantName || `${orgName} AI Assistant`;
+    
+    // Personality / Introduction
+    let introduction = '';
+    if (settings?.personality) {
+       introduction = settings.personality;
+    } else {
+       const assistantName = this.config.assistantName || `${orgName} AI Assistant`;
+       introduction = `You are ${assistantName}, the primary AI guide for the ${orgName} platform and its knowledge base.
 
-    const introduction = `You are ${assistantName}, the primary AI guide for the ${orgName} platform and its knowledge base.
-
-${this.config.platformDescription || `${orgName} helps teams capture product knowledge, documentation, and technical context so they can move faster with confidence.`}`;
+      ${this.config.platformDescription || `${orgName} helps teams capture product knowledge, documentation, and technical context so they can move faster with confidence.`}`;
+    }
 
     const capabilities = `## Core Capabilities:
 1. Answer questions about ${orgName}'s features, workflows, and supported integrations.
@@ -53,19 +60,44 @@ ${this.config.platformDescription || `${orgName} helps teams capture product kno
 4. Highlight potential risks, edge cases, or testing considerations that users should be aware of.
 5. Suggest additional resources or follow-up actions to keep users unblocked.`;
 
+    // Response Guidelines
+    let guidelines = '## Conversational Guidelines:\n - **CRITICAL**: Answer ONLY using the "Relevant information from knowledge base" section provided above. Do NOT use your general training knowledge.';
+    if (settings?.response_guidelines) {
+       guidelines = `\n${settings.response_guidelines}`;
+    } else {
+       guidelines = `
+- Be professional, concise, and oriented toward practical guidance.
+- **Context Usage**: Use conversation history ONLY for context (pronouns, continuity). Use knowledge base chunks for answers.
+- **Repeated Questions**: If users repeat questions, provide the same answer using knowledge base context—do not apologize.
+- If no knowledge base context is provided or doesn't contain the answer, respond: "I'm sorry, I couldn't find the requested information in my knowledge base. Please contact support for further assistance."
+- Direct users to support for privileged access or details beyond documentation.`;
+    }
+
+    const sections = [introduction, capabilities];
+
+    if (settings?.scope_of_assistance) {
+       sections.push(`## Scope of Assistance:\n${settings.scope_of_assistance}`);
+    }
+
+    // Knowledge Base Section (Dynamic content placeholder)
+    // We add the static description here, dynamic results are appended at query time
     const knowledgeBaseSection = this.buildKnowledgeBaseSection();
+    sections.push(knowledgeBaseSection);
+
     const guardrails = this.buildGuardrailsPrompt();
+    sections.push(guardrails);
 
-    const guidelines = `## Conversational Guidelines:
-1. Be professional, concise, and oriented toward practical guidance.
-2. **CRITICAL**: Answer ONLY using the "Relevant information from knowledge base" section provided above. Do NOT use your general training knowledge.
-3. **Context Usage**: Use conversation history ONLY for context (pronouns, continuity). Use knowledge base chunks for answers.
-4. **Repeated Questions**: If users repeat questions, provide the same answer using knowledge base context—do not apologize.
-5. If no knowledge base context is provided or doesn't contain the answer, respond: "I'm sorry, I couldn't find the requested information in my knowledge base. Please contact support for further assistance."
-6. Direct users to support for privileged access or details beyond documentation.`;
+    sections.push(guidelines);
 
-    const sections = [introduction, capabilities, knowledgeBaseSection, guardrails, guidelines];
+    if (settings?.interaction_etiquettes) {
+      sections.push(`## Interaction Etiquettes:\n${settings.interaction_etiquettes}`);
+    }
 
+    if (settings?.formatting_guidelines) {
+       sections.push(`## Formatting Guidelines:\n${settings.formatting_guidelines}`);
+    }
+    
+    // Custom Instructions from ENV (can be deprecated in favor of DB settings eventually)
     if (this.config.customInstructions) {
       sections.push(`## Custom Instructions:\n${this.config.customInstructions}`);
     }
@@ -93,10 +125,13 @@ The knowledge base contains curated content ingested through the src-to-kb pipel
 5. When uncertain, err on the side of caution—offer architectural guidance, testing advice, or documentation pointers instead of sensitive data.`;
   }
 
-  async generateResponse(message: string, context?: ChatContext | any): Promise<AIResponse> {
+  async generateResponse(message: string, context?: ChatContext | any, companySettings?: CompanyAISettings | null): Promise<AIResponse> {
     try {
       let knowledgeResults: string = '';
       let hasKnowledgeContext = false;
+      
+      // Determine the system prompt to use (custom or default)
+      const baseSystemPrompt = companySettings ? this.buildSystemPrompt(companySettings) : this.defaultSystemPrompt;
       
       // Check if knowledge results are already provided in context
       // If knowledgeResults is explicitly provided (even if empty string), it means search was already done
@@ -128,7 +163,7 @@ The knowledge base contains curated content ingested through the src-to-kb pipel
       }
 
       // Build system message with clear indication of knowledge base status
-      const systemContent = this.systemPrompt + 
+      const systemContent = baseSystemPrompt + 
         (hasKnowledgeContext 
           ? knowledgeResults 
           : '\n\n⚠️ IMPORTANT: No relevant information was found in the knowledge base for this query. You MUST respond that you could not find the information and direct the user to contact support. Do NOT attempt to answer using your general knowledge.');
@@ -153,12 +188,14 @@ The knowledge base contains curated content ingested through the src-to-kb pipel
       });
 
       const modelToUse = this.config.model || 'gpt-4o-mini';
-      logger.info(`🤖 Generating response using model: ${modelToUse}`);
+      const temperatureToUse = companySettings?.temperature ?? (this.config.temperature !== undefined ? this.config.temperature : 0.7);
+      
+      logger.info(`🤖 Generating response using model: ${modelToUse}, temp: ${temperatureToUse}`);
 
       const completion = await this.openai.chat.completions.create({
         model: modelToUse,
         messages,
-        temperature: this.config.temperature !== undefined ? this.config.temperature : 0.7,
+        temperature: temperatureToUse,
         max_tokens: this.config.maxTokens !== undefined ? this.config.maxTokens : 1000,
       });
 
@@ -182,10 +219,13 @@ The knowledge base contains curated content ingested through the src-to-kb pipel
    * Generate streaming response from OpenAI
    * Returns an async generator that yields content chunks and final response
    */
-  async *generateResponseStream(message: string, context?: ChatContext | any): AsyncGenerator<{ chunk: string; done: boolean; fullContent?: string }, void, unknown> {
+  async *generateResponseStream(message: string, context?: ChatContext | any, companySettings?: CompanyAISettings | null): AsyncGenerator<{ chunk: string; done: boolean; fullContent?: string }, void, unknown> {
     try {
       let knowledgeResults: string = '';
       let hasKnowledgeContext = false;
+
+      // Determine the system prompt to use (custom or default)
+      const baseSystemPrompt = companySettings ? this.buildSystemPrompt(companySettings) : this.defaultSystemPrompt;
       
       // Check if knowledge results are already provided in context
       // If knowledgeResults is explicitly provided (even if empty string), it means search was already done
@@ -224,7 +264,7 @@ The knowledge base contains curated content ingested through the src-to-kb pipel
       }
 
       // Build system message with clear indication of knowledge base status
-      const systemContent = this.systemPrompt + 
+      const systemContent = baseSystemPrompt + 
         (hasKnowledgeContext 
           ? knowledgeResults 
           : '\n\n⚠️ IMPORTANT: No relevant information was found in the knowledge base for this query. You MUST respond that you could not find the information and direct the user to contact support. Do NOT attempt to answer using your general knowledge.');
@@ -249,12 +289,14 @@ The knowledge base contains curated content ingested through the src-to-kb pipel
       });
 
       const modelToUse = this.config.model || 'gpt-4o-mini';
-      logger.info(`🤖 Generating streaming response using model: ${modelToUse}`);
+      const temperatureToUse = companySettings?.temperature ?? (this.config.temperature !== undefined ? this.config.temperature : 0.7);
+      
+      logger.info(`🤖 Generating streaming response using model: ${modelToUse}, temp: ${temperatureToUse}`);
 
       const stream = await this.openai.chat.completions.create({
         model: modelToUse,
         messages,
-        temperature: this.config.temperature !== undefined ? this.config.temperature : 0.7,
+        temperature: temperatureToUse,
         max_tokens: this.config.maxTokens !== undefined ? this.config.maxTokens : 1000,
         stream: true,
       });

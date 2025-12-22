@@ -10,6 +10,9 @@ import { RealtimePublisher } from '../services/RealtimePublisher';
 import { ResponseGenerationService } from '../services/ResponseGenerationService';
 import { ResponseStreamingService } from '../services/ResponseStreamingService';
 
+import { CompanyService } from '../services/CompanyService';
+import { CompanyRepository } from '../storage/CompanyRepository';
+
 export class ChatController {
   private chatManager: ChatManager;
   private storage: UnifiedStorage;
@@ -19,6 +22,7 @@ export class ChatController {
   private realtimePublisher?: RealtimePublisher;
   private responseGenerationService: ResponseGenerationService;
   private responseStreamingService: ResponseStreamingService;
+  private companyService: CompanyService;
 
   constructor(
     chatManager: ChatManager,
@@ -42,6 +46,7 @@ export class ChatController {
       this.chatHistoryLength
     );
     this.responseStreamingService = new ResponseStreamingService();
+    this.companyService = new CompanyService(new CompanyRepository(supabase, 'vezlo'));
   }
 
   // Create a new conversation
@@ -339,6 +344,16 @@ export class ChatController {
           const companyIdRaw = req.profile?.companyId || conversation?.organizationId;
           const companyId = companyIdRaw ? (typeof companyIdRaw === 'string' ? parseInt(companyIdRaw, 10) : companyIdRaw) : undefined;
           
+          // Get AI settings for the company
+          let companySettings = null;
+          if (companyId) {
+            try {
+              companySettings = await this.companyService.getAISettings(companyId);
+            } catch (err) {
+              logger.warn(`Failed to fetch AI settings for company ${companyId}`, err);
+            }
+          }
+
           // Search knowledge base and extract sources
           const { knowledgeResults, sources: extractedSources } = await this.responseGenerationService.searchKnowledgeBase(
             userMessageContent,
@@ -355,7 +370,7 @@ export class ChatController {
           }
 
           // Stream response from OpenAI
-          const stream = aiService.generateResponseStream(userMessageContent, chatContext);
+          const stream = aiService.generateResponseStream(userMessageContent, chatContext, companySettings);
           accumulatedContent = await this.responseStreamingService.streamAIResponse(
             stream,
             res,

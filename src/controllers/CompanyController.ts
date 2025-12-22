@@ -31,4 +31,54 @@ export class CompanyController {
       });
     }
   }
+
+  async getAISettings(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.profile) {
+        res.status(401).json({ error: 'Authentication required' });
+        return;
+      }
+
+      const companyId = req.profile.companyId;
+      const settings = await this.companyService.getAISettings(companyId);
+
+      res.json(settings || {});
+
+    } catch (error) {
+      logger.error('Get AI settings error:', error);
+      res.status(500).json({
+        error: 'Failed to get AI settings',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  async updateAISettings(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.profile) {
+        res.status(401).json({ error: 'Authentication required' });
+        return;
+      }
+
+      // Check if user is admin
+      if (req.profile.role !== 'admin') {
+        res.status(403).json({ error: 'Only admins can update AI settings' });
+        return;
+      }
+
+      const companyId = req.profile.companyId;
+      const settings = req.body;
+
+      const updatedSettings = await this.companyService.updateAISettings(companyId, settings);
+
+      res.json(updatedSettings);
+
+    } catch (error) {
+      logger.error('Update AI settings error:', error);
+      res.status(500).json({
+        error: 'Failed to update AI settings',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
 }

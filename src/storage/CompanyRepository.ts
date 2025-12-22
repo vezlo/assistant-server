@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { CompanyAnalytics } from '../types';
+import { CompanyAISettings } from '../types/index';
 
 export class CompanyRepository {
   private supabase: SupabaseClient;
@@ -140,6 +141,42 @@ export class CompanyRepository {
       likes: Number(data.likes) || 0,
       dislikes: Number(data.dislikes) || 0
     };
+  }
+
+  /**
+   * Get AI settings for a company
+   */
+  async getAISettings(companyId: string | number): Promise<CompanyAISettings | null> {
+    const tableName = this.getTableName('company_ai_settings');
+    const { data, error } = await this.supabase
+      .from(tableName)
+      .select('settings')
+      .eq('company_id', companyId)
+      .single();
+
+    if (error) throw new Error(`Failed to fetch AI settings: ${error.message}`);
+
+    return data?.settings || null;
+  }
+
+  /**
+   * Update or create AI settings for a company
+   */
+  async updateAISettings(companyId: string | number, settings: CompanyAISettings): Promise<CompanyAISettings> {
+    const tableName = this.getTableName('company_ai_settings');
+    const { data, error } = await this.supabase
+      .from(tableName)
+      .upsert({ 
+        company_id: companyId, 
+        settings,
+        updated_at: new Date().toISOString()
+      })
+      .select('settings')
+      .single();
+
+    if (error) throw new Error(`Failed to update AI settings: ${error.message}`);
+
+    return data?.settings;
   }
 }
 

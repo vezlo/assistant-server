@@ -367,6 +367,87 @@ app.get('/api/api-keys/status', authenticateUser(supabase), (req, res) => apiKey
    */
   app.get('/api/company/analytics', authenticateUser(supabase), (req, res) => companyController.getAnalytics(req, res));
 
+  /**
+   * @swagger
+   * /api/company/ai-settings:
+   *   get:
+   *     summary: Get company AI settings
+   *     description: Returns AI settings for the authenticated company
+   *     tags: [Company]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Settings retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 temperature:
+   *                   type: number
+   *                 personality:
+   *                   type: string
+   *                 response_guidelines:
+   *                   type: string
+   *                 formatting_guidelines:
+   *                   type: string
+   *                 scope_of_assistance:
+   *                   type: string
+   *       401:
+   *         description: Not authenticated
+   *       500:
+   *         description: Internal server error
+   */
+  app.get('/api/company/ai-settings', authenticateUser(supabase), (req, res) => companyController.getAISettings(req, res));
+
+  /**
+   * @swagger
+   * /api/company/ai-settings:
+   *   put:
+   *     summary: Update company AI settings
+   *     description: Updates AI settings for the authenticated company. Only admins can perform this action.
+   *     tags: [Company]
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               temperature:
+   *                 type: number
+   *               personality:
+   *                 type: string
+   *               response_guidelines:
+   *                 type: string
+   *               formatting_guidelines:
+   *                 type: string
+   *               scope_of_assistance:
+   *                 type: string
+   *     responses:
+   *       200:
+   *         description: Settings updated successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 temperature:
+   *                   type: number
+   *                 personality:
+   *                   type: string
+   *       401:
+   *         description: Not authenticated
+   *       403:
+   *         description: Only admins can update AI settings
+   *       500:
+   *         description: Internal server error
+   */
+  app.put('/api/company/ai-settings', authenticateUser(supabase), (req, res) => companyController.updateAISettings(req, res));
+
 // Chat API Routes
 /**
  * @swagger
