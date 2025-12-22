@@ -67,7 +67,7 @@ SELECT '010_add_slack_fields.ts', 1, NOW()
 WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '010_add_slack_fields.ts');
 
 INSERT INTO knex_migrations (name, batch, migration_time)
-SELECT '009_add_response_mode.ts', 1, NOW()
+SELECT '011_add_response_mode.ts', 1, NOW()
 WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '009_add_response_mode.ts');
 
 -- Set migration lock to unlocked (0 = unlocked, 1 = locked)
