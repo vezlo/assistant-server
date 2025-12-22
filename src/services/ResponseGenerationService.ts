@@ -2,6 +2,7 @@ import { IntentService, IntentClassificationResult } from './IntentService';
 import { AIService } from './AIService';
 import { ChatMessage } from '../types';
 import logger from '../config/logger';
+import {ResponseMode, RESPONSE_MODES} from "../config/responseModes";
 
 export interface KnowledgeSearchResult {
   knowledgeResults: string | null;
@@ -44,7 +45,7 @@ export class ResponseGenerationService {
   /**
    * Classify user intent
    */
-  async classifyIntent(message: string, history: ChatMessage[]): Promise<IntentClassificationResult> {
+  async classifyIntent(message: string, history: ChatMessage[], responseMode: ResponseMode): Promise<IntentClassificationResult> {
     if (!this.intentService) {
       return {
         intent: 'knowledge',
@@ -58,7 +59,8 @@ export class ResponseGenerationService {
 
     return this.intentService.classify({
       message,
-      conversationHistory: resolvedHistory
+      conversationHistory: resolvedHistory,
+      responseMode
     });
   }
 
@@ -93,6 +95,7 @@ export class ResponseGenerationService {
    */
   async searchKnowledgeBase(
     query: string,
+    responseMode: ResponseMode,
     companyId?: number
   ): Promise<KnowledgeSearchResult> {
     const sources: Array<{
@@ -136,23 +139,26 @@ export class ResponseGenerationService {
                 }
               }
             }
-            
-            // Add to sources array (deduplicate by document_uuid)
-            if (!sources.find(s => s.document_uuid === result.id)) {
-              sources.push({
-                document_uuid: result.id,
-                document_title: title,
-                chunk_indices: chunkIndices
-              });
-            } else {
-              const existing = sources.find(s => s.document_uuid === result.id);
-              if (existing) {
-                // Merge chunk indices
-                chunkIndices.forEach(idx => {
-                  if (!existing.chunk_indices.includes(idx)) {
-                    existing.chunk_indices.push(idx);
-                  }
+
+            // Only add sources if response mode is not 'user' to avoid exposing source code files in 'user' mode.
+            if (responseMode !== RESPONSE_MODES.USER) {
+              // Add to sources array (deduplicate by document_uuid)
+              if (!sources.find(s => s.document_uuid === result.id)) {
+                sources.push({
+                  document_uuid: result.id,
+                  document_title: title,
+                  chunk_indices: chunkIndices
                 });
+              } else {
+                const existing = sources.find(s => s.document_uuid === result.id);
+                if (existing) {
+                  // Merge chunk indices
+                  chunkIndices.forEach(idx => {
+                    if (!existing.chunk_indices.includes(idx)) {
+                      existing.chunk_indices.push(idx);
+                    }
+                  });
+                }
               }
             }
           }
@@ -185,17 +191,20 @@ export class ResponseGenerationService {
    */
   buildChatContext(
     messages: ChatMessage[],
-    knowledgeResults?: string | null
+    responseMode: ResponseMode,
+    knowledgeResults?: string | null,
   ): {
     conversationHistory: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
     knowledgeResults?: string;
+    responseMode: ResponseMode
   } {
     return {
       conversationHistory: messages.map(msg => ({
         role: msg.role as 'user' | 'assistant' | 'system',
         content: msg.content
       })),
-      knowledgeResults: knowledgeResults ?? undefined
+      knowledgeResults: knowledgeResults ?? undefined,
+      responseMode
     };
   }
 

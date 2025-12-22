@@ -15,6 +15,14 @@ export class CompanyService {
     return this.repository.getAnalytics(companyId);
   }
 
+  async getCompany(companyId: string | number) {
+    return this.repository.getCompany(companyId);
+  }
+
+  async updateCompany(companyId: string | number, company: { response_mode: string }) {
+    return this.repository.updateCompany(companyId, company);
+  }
+
   /**
    * Get AI settings for a company
    */

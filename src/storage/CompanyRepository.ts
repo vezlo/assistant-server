@@ -106,7 +106,7 @@ export class CompanyRepository {
       .eq(`${conversationsTable}.company_id`, companyId);
 
     if (error) throw new Error(`Failed to fetch ${messageType} message count: ${error.message}`);
-    
+
     return count || 0;
   }
 
@@ -123,7 +123,7 @@ export class CompanyRepository {
       .neq('type', 'system');
 
     if (error) throw new Error(`Failed to fetch total message count: ${error.message}`);
-    
+
     return count || 0;
   }
 
@@ -141,6 +141,26 @@ export class CompanyRepository {
       likes: Number(data.likes) || 0,
       dislikes: Number(data.dislikes) || 0
     };
+  }
+
+  async getCompany(companyId: string | number) {
+    const { data, error } = await this.supabase
+      .from(this.getTableName('companies'))
+      .select('*')
+      .eq('id', companyId)
+      .single();
+
+    if (error) throw new Error(`Failed to fetch company: ${error.message}`);
+    return data;
+  }
+
+  async updateCompany(companyId: string | number, company: { response_mode: string }) {
+    const { error } = await this.supabase
+      .from(this.getTableName('companies'))
+      .update(company)
+      .eq('id', companyId);
+
+    if (error) throw new Error(`Failed to update company: ${error.message}`);
   }
 
   /**
@@ -166,8 +186,8 @@ export class CompanyRepository {
     const tableName = this.getTableName('company_ai_settings');
     const { data, error } = await this.supabase
       .from(tableName)
-      .upsert({ 
-        company_id: companyId, 
+      .upsert({
+        company_id: companyId,
         settings,
         updated_at: new Date().toISOString()
       })

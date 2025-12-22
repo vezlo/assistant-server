@@ -7,6 +7,17 @@
 - **Conversation History**: Slack bot uses same chat history logic as widget (configured via `CHAT_HISTORY_LENGTH`)
 - **Reaction Feedback**: Visual feedback using emoji reactions (hourglass → checkmark/X)
 
+## [2.9.0] - 2025-12-17
+
+### Added
+- **Company APIs**: New endpoints for managing company settings and retrieving analytics.
+  - `GET /api/company`: Retrieve authenticated company details (ID, name, response mode).
+  - `PATCH /api/company`: Update company settings (e.g., toggle `response_mode` between "user" and "developer").
+- **Response Modes**: Introduced configurable AI personality modes:
+  - `user`: Standard friendly assistant (default).
+  - `developer`: Technical, concise, and code-focused responses.
+- Database migration 010: Added `response_mode` column to `vezlo_companies` table.
+
 ## [2.8.0] - 2025-12-17
 
 ### Added
