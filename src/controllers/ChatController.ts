@@ -10,6 +10,7 @@ import { RealtimePublisher } from '../services/RealtimePublisher';
 import { ResponseGenerationService } from '../services/ResponseGenerationService';
 import { ResponseStreamingService } from '../services/ResponseStreamingService';
 import { ValidationService } from '../services/ValidationService';
+import { DatabaseToolService } from '../services/DatabaseToolService';
 
 export class ChatController {
   private chatManager: ChatManager;
@@ -21,12 +22,13 @@ export class ChatController {
   private responseGenerationService: ResponseGenerationService;
   private responseStreamingService: ResponseStreamingService;
   private validationService?: ValidationService;
+  private databaseToolService?: DatabaseToolService;
 
   constructor(
     chatManager: ChatManager,
     storage: UnifiedStorage,
     supabase: SupabaseClient,
-    options: { historyLength?: number; intentService?: IntentService; realtimePublisher?: RealtimePublisher; validationService?: ValidationService } = {}
+    options: { historyLength?: number; intentService?: IntentService; realtimePublisher?: RealtimePublisher; validationService?: ValidationService; databaseToolService?: DatabaseToolService } = {}
   ) {
     this.chatManager = chatManager;
     this.storage = storage;
@@ -36,6 +38,7 @@ export class ChatController {
     this.intentService = options.intentService;
     this.realtimePublisher = options.realtimePublisher;
     this.validationService = options.validationService;
+    this.databaseToolService = options.databaseToolService;
     
     // Initialize services
     const aiService = (chatManager as any).aiService;
@@ -329,8 +332,81 @@ export class ChatController {
       let sources: Array<{ document_uuid: string; document_title: string; chunk_indices: number[] }> = [];
 
       try {
-        // If intent returned a response (non-knowledge intent), stream it
-        if (intentResponse) {
+        // Handle database_tool intent separately
+        if (intentResult.intent === 'database_tool' && intentResult.toolCall) {
+          logger.info(`🔧 Database tool call detected: ${intentResult.toolCall.toolName}`);
+          
+          if (!this.databaseToolService?.isEnabled()) {
+            logger.warn('⚠️ Database tool requested but service not enabled');
+            await this.responseStreamingService.streamTextContent(
+              'I apologize, but I cannot access user data at the moment. Please contact support.',
+              res
+            );
+            accumulatedContent = 'I apologize, but I cannot access user data at the moment. Please contact support.';
+          } else {
+            // Get user context
+            const userId = process.env.TEST_USER_UUID || req.user?.id || 'anonymous';
+            
+            // Execute tool
+            logger.info(`🔧 Executing tool: ${intentResult.toolCall.toolName} for user: ${userId}`);
+            const toolResult = await this.databaseToolService.executeTool(
+              intentResult.toolCall.toolName,
+              { ...intentResult.toolCall.parameters, user_id: userId },
+              { userId }
+            );
+            
+            // Check if tool execution was successful
+            if (!toolResult.success) {
+              logger.error(`❌ Tool execution failed: ${toolResult.error}`);
+              await this.responseStreamingService.streamTextContent(
+                'I apologize, but I encountered an error accessing your data. Please try again or contact support.',
+                res
+              );
+              accumulatedContent = 'I apologize, but I encountered an error accessing your data. Please try again or contact support.';
+            } else {
+              // Format result with LLM - use direct OpenAI call to bypass system prompt restrictions
+              logger.info('🔧 Formatting tool result with LLM');
+              
+              const aiService = this.responseGenerationService.getAIService();
+              if (!aiService) {
+                throw new Error('AI service not available');
+              }
+              
+              // Direct OpenAI call bypassing the restrictive system prompt
+              const openai = (aiService as any).openai;
+              const modelToUse = process.env.AI_MODEL || 'gpt-4o-mini';
+              
+              const completion = await openai.chat.completions.create({
+                model: modelToUse,
+                messages: [
+                  {
+                    role: 'system',
+                    content: 'You are a helpful assistant. Format database query results naturally and conversationally for the user.'
+                  },
+                  {
+                    role: 'user',
+                    content: `User asked: "${userMessageContent}"
+
+Database returned:
+${JSON.stringify(toolResult.user, null, 2)}
+
+Provide a natural, friendly response to the user's question using this data.`
+                  }
+                ],
+                temperature: 0.7,
+                max_tokens: 500
+              });
+              
+              const formattedContent = completion.choices[0]?.message?.content || 'Here is your information.';
+              
+              logger.info('📤 Streaming database tool response');
+              await this.responseStreamingService.streamTextContent(formattedContent, res);
+              accumulatedContent = formattedContent;
+            }
+          }
+        }
+        // If intent returned a response (non-knowledge/non-tool intent), stream it
+        else if (intentResponse) {
           logger.info(`📤 Streaming intent response for: ${intentResult.intent}`);
           await this.responseStreamingService.streamTextContent(intentResponse, res);
           accumulatedContent = intentResponse;

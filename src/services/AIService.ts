@@ -7,6 +7,7 @@ import {
   NavigationLink
 } from '../types';
 import { KnowledgeBaseService } from './KnowledgeBaseService';
+import { DatabaseToolService } from './DatabaseToolService';
 import logger from '../config/logger';
 
 export class AIService {
@@ -16,6 +17,7 @@ export class AIService {
   private navigationLinks: NavigationLink[];
   private knowledgeBase: string;
   private knowledgeBaseService?: KnowledgeBaseService;
+  private databaseToolService?: DatabaseToolService;
 
   constructor(config: AIServiceConfig) {
     this.config = config;
@@ -35,6 +37,11 @@ export class AIService {
   setKnowledgeBaseService(service: KnowledgeBaseService): void {
     this.knowledgeBaseService = service;
     this.systemPrompt = this.buildSystemPrompt();
+  }
+
+  setDatabaseToolService(service: DatabaseToolService): void {
+    this.databaseToolService = service;
+    logger.info('🔌 Database tool service attached to AI Service');
   }
 
 
@@ -201,9 +208,16 @@ The knowledge base contains curated content ingested through the src-to-kb pipel
   /**
    * Generate streaming response from OpenAI
    * Returns an async generator that yields content chunks and final response
+   * 
+   * Note: Tool calling is not supported in streaming mode.
+   * If tools are needed, the system will fall back to non-streaming mode.
    */
   async *generateResponseStream(message: string, context?: ChatContext | any): AsyncGenerator<{ chunk: string; done: boolean; fullContent?: string }, void, unknown> {
     try {
+      // Check if tools would be needed - if so, log warning (tools not supported in streaming)
+      if (this.databaseToolService?.isEnabled()) {
+        logger.warn('⚠️ Database tools are enabled but not supported in streaming mode. Consider using non-streaming for tool calls.');
+      }
       let knowledgeResults: string = '';
       let hasKnowledgeContext = false;
       

@@ -64,7 +64,7 @@ export class ResponseGenerationService {
 
   /**
    * Handle intent classification result
-   * Returns response content if non-knowledge intent, null if knowledge intent
+   * Returns response content if non-knowledge intent, null if knowledge/tool intent
    */
   handleIntentResult(
     result: IntentClassificationResult,
@@ -76,6 +76,12 @@ export class ResponseGenerationService {
     }
 
     logger.info(`🧾 Intent result: ${result.intent}${result.needsGuardrail ? ' (guardrail triggered)' : ''}`);
+
+    // Database tool intent - return null (handled by ChatController)
+    if (result.intent === 'database_tool') {
+      logger.info('🔧 Database tool intent detected; will be handled separately.');
+      return null;
+    }
 
     // For non-knowledge intents, return the response content to be streamed
     if (result.intent !== 'knowledge') {

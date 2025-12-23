@@ -17,6 +17,7 @@ import { RealtimePublisher } from '../services/RealtimePublisher';
 import { SlackService } from '../services/SlackService';
 import { SlackController } from '../controllers/SlackController';
 import { ValidationService } from '../services/ValidationService';
+import { DatabaseToolService } from '../services/DatabaseToolService';
 
 export interface ServiceInitOptions {
   supabase: SupabaseClient;
@@ -37,6 +38,7 @@ export interface InitializedCoreServices {
     citationService: CitationService;
     slackService: SlackService;
     validationService: ValidationService;
+    databaseToolService: any;
   };
   controllers: {
     chatController: ChatController;
@@ -118,6 +120,20 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
     knowledgeBaseService: knowledgeBase
   });
 
+  // Initialize external database tool service (experimental)
+  const databaseToolService = new DatabaseToolService({
+    url: process.env.EXTERNAL_DB_URL || '',
+    key: process.env.EXTERNAL_DB_KEY || '',
+    enabled: process.env.EXTERNAL_DB_ENABLED === 'true'
+  });
+
+  if (databaseToolService.isEnabled()) {
+    aiService.setDatabaseToolService(databaseToolService);
+    logger.info('✅ External database tool service attached to AI service');
+  } else {
+    logger.info('ℹ️  External database tools disabled');
+  }
+
   // Set V2 service for adjacent chunk retrieval
 
   const chatManager = new ChatManager({
@@ -133,7 +149,8 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
     openaiApiKey: process.env.OPENAI_API_KEY!,
     model: aiModel,
     assistantName: process.env.ASSISTANT_NAME,
-    organizationName: process.env.ORGANIZATION_NAME
+    organizationName: process.env.ORGANIZATION_NAME,
+    databaseToolsEnabled: process.env.EXTERNAL_DB_ENABLED === 'true'
   });
 
   // Initialize realtime publisher if env vars are available
@@ -157,7 +174,8 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
     historyLength: resolvedHistoryLength,
     intentService,
     realtimePublisher,
-    validationService
+    validationService,
+    databaseToolService
   });
 
   const knowledgeController = new KnowledgeController(knowledgeBase, aiService, citationService);
@@ -181,6 +199,7 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
       apiKeyService,
       companyService,
       slackService,
+      databaseToolService,
       validationService
     },
     controllers: {
