@@ -1,3 +1,18 @@
+## [2.10.0] - 2024-12-22
+
+### Added
+- **AI Response Validation**: Integration with `@vezlo/ai-validator` for response quality validation
+- **Developer Mode**: Strict code grounding for technical queries (`DEVELOPER_MODE` env variable)
+- **LLM-as-Judge**: Semantic validation using OpenAI for context accuracy
+- **Smart Source Filtering**: Sources excluded when AI apologizes or validation fails
+- `AI_VALIDATION_ENABLED` env variable to enable/disable validation
+- Validation results included in final streaming chunk (confidence, valid, status)
+
+### Changed
+- System prompt adapts based on developer mode (code-focused vs user-friendly)
+- Source sending logic now checks for apology responses and validation results
+- ValidationService simplified to single `enabled` parameter
+
 ## [2.9.0] - 2025-12-18
 
 ### Added

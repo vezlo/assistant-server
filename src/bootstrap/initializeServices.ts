@@ -16,6 +16,7 @@ import { IntentService } from '../services/IntentService';
 import { RealtimePublisher } from '../services/RealtimePublisher';
 import { SlackService } from '../services/SlackService';
 import { SlackController } from '../controllers/SlackController';
+import { ValidationService } from '../services/ValidationService';
 
 export interface ServiceInitOptions {
   supabase: SupabaseClient;
@@ -35,6 +36,7 @@ export interface InitializedCoreServices {
     companyService: CompanyService;
     citationService: CitationService;
     slackService: SlackService;
+    validationService: ValidationService;
   };
   controllers: {
     chatController: ChatController;
@@ -146,10 +148,16 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
     logger.warn('⚠️  Realtime publisher not initialized (missing SUPABASE_URL or SUPABASE_SERVICE_KEY)');
   }
 
+  // Initialize Validation service
+  const validationService = new ValidationService(
+    process.env.AI_VALIDATION_ENABLED === 'true'
+  );
+
   const chatController = new ChatController(chatManager, storage, supabase, {
     historyLength: resolvedHistoryLength,
     intentService,
-    realtimePublisher
+    realtimePublisher,
+    validationService
   });
 
   const knowledgeController = new KnowledgeController(knowledgeBase, aiService, citationService);
@@ -172,7 +180,8 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
       chatManager,
       apiKeyService,
       companyService,
-      slackService
+      slackService,
+      validationService
     },
     controllers: {
       chatController,

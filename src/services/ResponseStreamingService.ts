@@ -3,6 +3,27 @@ import logger from '../config/logger';
 
 export class ResponseStreamingService {
   /**
+   * Detect if AI response is an apology (couldn't find information)
+   */
+  private isApologyResponse(response: string): boolean {
+    const apologyPhrases = [
+      "i'm sorry",
+      "i am sorry",
+      "i couldn't find",
+      "i could not find",
+      "i don't have",
+      "i do not have",
+      "no relevant information",
+      "couldn't find the requested information",
+      "could not find the requested information",
+      "contact support",
+      "please contact"
+    ];
+    const lowerResponse = response.toLowerCase();
+    return apologyPhrases.some(phrase => lowerResponse.includes(phrase));
+  }
+
+  /**
    * Stream text content word by word to simulate streaming
    * This ensures consistent SSE format for all responses
    */
@@ -45,7 +66,13 @@ export class ResponseStreamingService {
       document_title: string;
       chunk_indices: number[];
     }>,
-    knowledgeResults?: string | null
+    knowledgeResults?: string | null,
+    validationCallback?: ((response: string, query: string) => Promise<{
+      confidence: number;
+      valid: boolean;
+      status: string;
+    } | null>) | null,
+    query?: string
   ): Promise<string> {
     let accumulatedContent = '';
     let chunkCount = 0;
@@ -55,15 +82,42 @@ export class ResponseStreamingService {
     for await (const { chunk, done, fullContent } of stream) {
       chunkCount++;
       
-      // On last chunk, include sources (only if we actually have useful knowledge results)
-      // Don't send sources if LLM couldn't answer or apologized
-      const shouldIncludeSources = done && sources && sources.length > 0 && knowledgeResults && knowledgeResults.trim().length > 0;
+      // Update accumulated content first
+      if (chunk) {
+        accumulatedContent += chunk;
+      }
+      
+      // On last chunk, determine if we should include sources
+      let shouldIncludeSources = false;
+      let validation = null;
+      
+      if (done && sources && sources.length > 0 && knowledgeResults && knowledgeResults.trim().length > 0) {
+        const finalContent = fullContent || accumulatedContent;
+        
+        // Check if AI apologized (couldn't find info)
+        const isApology = this.isApologyResponse(finalContent);
+        
+        if (!isApology) {
+          // Run validation if callback provided
+          if (validationCallback && query) {
+            validation = await validationCallback(finalContent, query);
+            // Include sources only if validation passed OR validation not enabled
+            shouldIncludeSources = !validation || validation.valid !== false;
+          } else {
+            // No validation enabled, include sources
+            shouldIncludeSources = true;
+          }
+        } else {
+          logger.info('⚠️  Apology response detected - sources not sent');
+        }
+      }
       
       const chunkData = JSON.stringify({
         type: 'chunk',
         content: chunk,
         done: done || false,
-        sources: shouldIncludeSources ? sources : undefined
+        sources: shouldIncludeSources ? sources : undefined,
+        validation: shouldIncludeSources && validation ? validation : undefined
       });
       
       // Log sources on last chunk for debugging
@@ -75,11 +129,6 @@ export class ResponseStreamingService {
       
       res.write(`data: ${chunkData}\n\n`);
       if (res.flush) res.flush();
-      
-      // Update accumulated content
-      if (chunk) {
-        accumulatedContent += chunk;
-      }
       
       // Log first and last chunks
       if (chunkCount === 1) {

@@ -32,6 +32,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for complete migration guide.
 ## 🏗️ Architecture
 
 - **Backend APIs** - RESTful API endpoints for AI chat and knowledge management
+- **AI Response Validation** - LLM-as-Judge validation with developer/user modes via `@vezlo/ai-validator`
 - **Real-time Communication** - WebSocket support for live chat with Supabase Realtime broadcasting
 - **Human Agent Handoff** - Agent join/leave workflows with realtime status updates and message synchronization
 - **Advanced RAG System** - Chunk-based semantic search with adjacent retrieval using OpenAI text-embedding-3-large (3072 dims) and pgvector
@@ -151,6 +152,14 @@ AI_MODEL=gpt-4o
 
 # Migration Security
 MIGRATION_SECRET_KEY=your-secure-migration-key-here
+
+# AI Response Validation (Optional)
+AI_VALIDATION_ENABLED=false
+
+# Developer Mode (Optional)
+# true = Strict code grounding for technical queries
+# false = User-friendly generic responses
+DEVELOPER_MODE=false
 ```
 
 #### 3. Run Database Migrations (Recommended)

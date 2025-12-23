@@ -1,6 +1,6 @@
 {
   "name": "@vezlo/assistant-server",
-  "version": "2.9.0",
+  "version": "2.10.0",
   "description": "Production-ready AI Assistant Server with advanced RAG (chunk-based semantic search + adjacent retrieval), conversation management, real-time communication, and human agent handoff",
   "main": "dist/src/server.js",
   "types": "dist/src/server.d.ts",
@@ -46,6 +46,7 @@
     "@supabase/supabase-js": "^2.38.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.10",
+    "@vezlo/ai-validator": "file:../ai-validator",
     "bcryptjs": "^3.0.2",
     "compression": "^1.7.4",
     "cors": "^2.8.5",

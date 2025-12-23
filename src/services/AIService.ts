@@ -41,12 +41,20 @@ export class AIService {
   private buildSystemPrompt(): string {
     const orgName = this.config.organizationName || 'Your Organization';
     const assistantName = this.config.assistantName || `${orgName} AI Assistant`;
+    const developerMode = process.env.DEVELOPER_MODE === 'true';
 
     const introduction = `You are ${assistantName}, the primary AI guide for the ${orgName} platform and its knowledge base.
 
 ${this.config.platformDescription || `${orgName} helps teams capture product knowledge, documentation, and technical context so they can move faster with confidence.`}`;
 
-    const capabilities = `## Core Capabilities:
+    const capabilities = developerMode 
+      ? `## Core Capabilities (Developer Mode):
+1. Analyze and explain code structure, functions, components, and implementation details.
+2. Reference specific files, functions, classes, and code patterns from the knowledge base.
+3. Provide technical guidance grounded STRICTLY in the actual codebase implementation.
+4. Highlight code dependencies, function calls, and architectural patterns.
+5. NEVER provide generic advice—always cite specific code elements from the sources.`
+      : `## Core Capabilities:
 1. Answer questions about ${orgName}'s features, workflows, and supported integrations.
 2. Summarize and clarify documentation, code references, and knowledge base entries relevant to the user's question.
 3. Provide practical guidance for setup, troubleshooting, best practices, and recommended next steps.
@@ -56,7 +64,19 @@ ${this.config.platformDescription || `${orgName} helps teams capture product kno
     const knowledgeBaseSection = this.buildKnowledgeBaseSection();
     const guardrails = this.buildGuardrailsPrompt();
 
-    const guidelines = `## Conversational Guidelines:
+    const guidelines = developerMode
+      ? `## Conversational Guidelines (Developer Mode - STRICT):
+1. **MANDATORY**: Reference specific code files, functions, components, and variables from knowledge base.
+2. **CODE GROUNDING**: Every statement must cite actual code implementation details.
+3. **NO GENERIC ANSWERS**: Never give general programming advice. Only explain what EXISTS in the codebase.
+4. **FORMAT**: Start with "Based on [FileName.ext], the [function/component] implements..."
+5. **CRITICAL**: If knowledge base contains code, explain HOW it works, not generic "how to" steps.
+6. If no relevant code found, respond: "I couldn't find implementation details for this in the codebase. Please verify the code exists or contact the development team."
+7. **Example Good Response**: "Based on RewardOrderDetailDialog.js, the handleRedemption() function processes rewards by calling rewardService.redeem() with the reward ID..."
+8. **Example Bad Response**: "To redeem a reward, follow these steps: 1. Navigate to rewards section..."
+
+**Remember**: You are analyzing an existing codebase for developers/PMs. Always ground responses in actual code.`
+      : `## Conversational Guidelines:
 1. Be professional, concise, and oriented toward practical guidance.
 2. **CRITICAL**: Answer ONLY using the "Relevant information from knowledge base" section provided above. Do NOT use your general training knowledge.
 3. **Context Usage**: Use conversation history ONLY for context (pronouns, continuity). Use knowledge base chunks for answers.

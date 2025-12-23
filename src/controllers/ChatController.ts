@@ -9,6 +9,7 @@ import { ChatConversation, ChatMessage, StoredChatMessage } from '../types';
 import { RealtimePublisher } from '../services/RealtimePublisher';
 import { ResponseGenerationService } from '../services/ResponseGenerationService';
 import { ResponseStreamingService } from '../services/ResponseStreamingService';
+import { ValidationService } from '../services/ValidationService';
 
 export class ChatController {
   private chatManager: ChatManager;
@@ -19,12 +20,13 @@ export class ChatController {
   private realtimePublisher?: RealtimePublisher;
   private responseGenerationService: ResponseGenerationService;
   private responseStreamingService: ResponseStreamingService;
+  private validationService?: ValidationService;
 
   constructor(
     chatManager: ChatManager,
     storage: UnifiedStorage,
     supabase: SupabaseClient,
-    options: { historyLength?: number; intentService?: IntentService; realtimePublisher?: RealtimePublisher } = {}
+    options: { historyLength?: number; intentService?: IntentService; realtimePublisher?: RealtimePublisher; validationService?: ValidationService } = {}
   ) {
     this.chatManager = chatManager;
     this.storage = storage;
@@ -33,6 +35,7 @@ export class ChatController {
     this.chatHistoryLength = typeof historyLength === 'number' && historyLength > 0 ? historyLength : 2;
     this.intentService = options.intentService;
     this.realtimePublisher = options.realtimePublisher;
+    this.validationService = options.validationService;
     
     // Initialize services
     const aiService = (chatManager as any).aiService;
@@ -356,11 +359,34 @@ export class ChatController {
 
           // Stream response from OpenAI
           const stream = aiService.generateResponseStream(userMessageContent, chatContext);
+          
+          // Create validation callback if service is available
+          const validationCallback = this.validationService && sources.length > 0 
+            ? async (response: string, query: string) => {
+                try {
+                  // Use sources data we already have - no need to fetch chunks again
+                  // Just use document titles and UUIDs for basic validation
+                  const simplifiedChunks = sources.map(s => ({
+                    chunk_text: knowledgeResults || '', // Use knowledge results as content
+                    document_title: s.document_title,
+                    document_uuid: s.document_uuid
+                  }));
+                  
+                  return await this.validationService!.validateResponse(query, response, simplifiedChunks);
+                } catch (error) {
+                  logger.error('Validation error:', error);
+                  return null;
+                }
+              }
+            : null;
+          
           accumulatedContent = await this.responseStreamingService.streamAIResponse(
             stream,
             res,
             sources,
-            knowledgeResults
+            knowledgeResults,
+            validationCallback,
+            userMessageContent
           );
         }
 
