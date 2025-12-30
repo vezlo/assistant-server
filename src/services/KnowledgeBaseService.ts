@@ -38,6 +38,10 @@ interface SearchResult {
   type: string;
   score: number;
   metadata?: Record<string, any>;
+  raw_chunks?: Array<{
+    chunk_text: string;
+    chunk_index: number;
+  }>;
 }
 
 interface ChunkResult {
@@ -547,7 +551,11 @@ export class KnowledgeBaseService {
           ...firstChunk.document_metadata,
           chunk_count: chunks.length,
           chunk_range: `${chunks[0].chunk_index}-${chunks[chunks.length - 1].chunk_index}`
-        }
+        },
+        raw_chunks: chunks.map(c => ({
+          chunk_text: c.chunk_text,
+          chunk_index: c.chunk_index
+        }))
       });
     });
 

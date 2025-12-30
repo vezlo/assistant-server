@@ -100,16 +100,17 @@ export class IntentService {
     // No need to trim further - respect the configured limit
 
     const databaseToolSection = this.databaseToolsEnabled ? `
-- "database_tool": user asks for THEIR OWN personal data, profile, orders, account info, or user-specific information from the database. Examples: "show my details", "what's my email", "get my profile", "my orders", "my account info". When detected, also provide:
-  - tool_call: { "tool_name": "get_user_details", "parameters": { "user_id": "{{USER_ID}}" } }
+- "database_tool": user asks for THEIR OWN personal data, profile, orders, account info, or user-specific information from the database. Examples: "show my details", "what's my email", "get my profile", "my orders", "my account info". When detected, provide tool_call in this format:
+  - tool_call: { "tool_name": "get_user_details", "parameters": {} }
   
 Available Database Tools:
-- get_user_details: Fetches user profile (email, name, display name). Use for: "show my profile", "what's my email", "my details", "my account"
+- get_user_details: Fetches user profile (email, name, display name). Use for: "show my profile", "what's my email", "my details", "my account". Parameters: empty object {}
 
 Tool Selection:
-- If user asks about THEIR data (my profile, my email, my info), use "database_tool" intent
+- If user asks about THEIR data (my profile, my email, my info), use "database_tool" intent with appropriate tool_call
 - If user asks about PLATFORM features/docs, use "knowledge" intent
-- "database_tool" takes priority over "knowledge" for user-specific queries` : '';
+- "database_tool" takes priority over "knowledge" for user-specific queries
+- Always set parameters to empty object {} for get_user_details` : '';
 
     const intentList = this.databaseToolsEnabled 
       ? '["knowledge","greeting","acknowledgment","personality","clarification","guardrail","human_support_request","human_support_email","database_tool"]'

@@ -419,7 +419,7 @@ Provide a natural, friendly response to the user's question using this data.`
           const companyId = companyIdRaw ? (typeof companyIdRaw === 'string' ? parseInt(companyIdRaw, 10) : companyIdRaw) : undefined;
           
           // Search knowledge base and extract sources
-          const { knowledgeResults, sources: extractedSources } = await this.responseGenerationService.searchKnowledgeBase(
+          const { knowledgeResults, sources: extractedSources, chunks: knowledgeChunks } = await this.responseGenerationService.searchKnowledgeBase(
             userMessageContent,
             companyId
           );
@@ -437,18 +437,11 @@ Provide a natural, friendly response to the user's question using this data.`
           const stream = aiService.generateResponseStream(userMessageContent, chatContext);
           
           // Create validation callback if service is available
-          const validationCallback = this.validationService && sources.length > 0 
+          const validationCallback = this.validationService && knowledgeChunks.length > 0 
             ? async (response: string, query: string) => {
                 try {
-                  // Use sources data we already have - no need to fetch chunks again
-                  // Just use document titles and UUIDs for basic validation
-                  const simplifiedChunks = sources.map(s => ({
-                    chunk_text: knowledgeResults || '', // Use knowledge results as content
-                    document_title: s.document_title,
-                    document_uuid: s.document_uuid
-                  }));
-                  
-                  return await this.validationService!.validateResponse(query, response, simplifiedChunks);
+                  // Use individual chunks for accurate validation
+                  return await this.validationService!.validateResponse(query, response, knowledgeChunks);
                 } catch (error) {
                   logger.error('Validation error:', error);
                   return null;

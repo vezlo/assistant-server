@@ -45,6 +45,7 @@ export class AIService {
   }
 
 
+
   private buildSystemPrompt(): string {
     const orgName = this.config.organizationName || 'Your Organization';
     const assistantName = this.config.assistantName || `${orgName} AI Assistant`;
