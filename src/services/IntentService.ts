@@ -10,15 +10,13 @@ type IntentLabel =
   | 'clarification'
   | 'guardrail'
   | 'human_support_request'
-  | 'human_support_email'
-  | 'database_tool';
+  | 'human_support_email';
 
 interface IntentServiceConfig {
   openaiApiKey: string;
   model?: string;
   assistantName?: string;
   organizationName?: string;
-  databaseToolsEnabled?: boolean;
 }
 
 export interface IntentClassificationResult {
@@ -27,10 +25,6 @@ export interface IntentClassificationResult {
   response?: string;
   needsGuardrail?: boolean;
   contactEmail?: string | null;
-  toolCall?: {
-    toolName: string;
-    parameters: Record<string, any>;
-  };
 }
 
 interface ClassificationInput {
@@ -43,7 +37,6 @@ export class IntentService {
   private model: string;
   private assistantName: string;
   private organizationName: string;
-  private databaseToolsEnabled: boolean;
 
   constructor(config: IntentServiceConfig) {
     this.openai = new OpenAI({
@@ -52,7 +45,6 @@ export class IntentService {
     this.model = config.model || 'gpt-4o-mini';
     this.assistantName = config.assistantName || 'AI Assistant';
     this.organizationName = config.organizationName || 'Your Organization';
-    this.databaseToolsEnabled = config.databaseToolsEnabled || false;
   }
 
   async classify(input: ClassificationInput): Promise<IntentClassificationResult> {
@@ -82,11 +74,7 @@ export class IntentService {
         reason: parsed.reason,
         response: parsed.response || undefined,
         needsGuardrail: Boolean(parsed.needs_guardrail),
-        contactEmail: parsed.contact_email || null,
-        toolCall: parsed.tool_call ? {
-          toolName: parsed.tool_call.tool_name,
-          parameters: parsed.tool_call.parameters || {}
-        } : undefined
+        contactEmail: parsed.contact_email || null
       };
     } catch (error) {
       logger.warn('Intent classification failed, defaulting to knowledge flow', error);
@@ -99,21 +87,7 @@ export class IntentService {
     // Use all provided history (already limited by CHAT_HISTORY_LENGTH in ChatController)
     // No need to trim further - respect the configured limit
 
-    const databaseToolSection = this.databaseToolsEnabled ? `
-- "database_tool": user asks for THEIR OWN personal data, profile, orders, account info, or user-specific information from the database. Examples: "show my details", "what's my email", "get my profile", "my orders", "my account info". When detected, also provide:
-  - tool_call: { "tool_name": "get_user_details", "parameters": { "user_id": "{{USER_ID}}" } }
-  
-Available Database Tools:
-- get_user_details: Fetches user profile (email, name, display name). Use for: "show my profile", "what's my email", "my details", "my account"
-
-Tool Selection:
-- If user asks about THEIR data (my profile, my email, my info), use "database_tool" intent
-- If user asks about PLATFORM features/docs, use "knowledge" intent
-- "database_tool" takes priority over "knowledge" for user-specific queries` : '';
-
-    const intentList = this.databaseToolsEnabled 
-      ? '["knowledge","greeting","acknowledgment","personality","clarification","guardrail","human_support_request","human_support_email","database_tool"]'
-      : '["knowledge","greeting","acknowledgment","personality","clarification","guardrail","human_support_request","human_support_email"]';
+    const intentList = '["knowledge","greeting","acknowledgment","personality","clarification","guardrail","human_support_request","human_support_email"]';
 
     const systemMessage: OpenAI.Chat.Completions.ChatCompletionMessageParam = {
       role: 'system',
@@ -123,13 +97,12 @@ Your job is to analyse the latest user message (with short conversation history)
 Return a JSON object with:
 - intent: one of ${intentList}
 - reason: brief justification
-- response: a natural, contextual assistant response appropriate for this intent (ONLY for non-knowledge/non-database_tool intents; leave empty for "knowledge" and "database_tool")
+- response: a natural, contextual assistant response appropriate for this intent (ONLY for non-knowledge intents; leave empty for "knowledge")
 - needs_guardrail: true if the user is requesting sensitive credentials or configuration
 - contact_email: email address provided by the user, if present, otherwise null
-- tool_call: (only for "database_tool" intent) { "tool_name": string, "parameters": object }
 
 Definitions:
-- "knowledge": ANY question, query, or request about the platform, product, documentation, technical details, features, usage, troubleshooting, or any topic that could potentially be in the knowledge base. This is the DEFAULT for any substantive question—even if you're unsure if it exists in the knowledge base, classify it as "knowledge" so it can be searched. Also includes follow-up questions like "what about X?", "can you explain more?", or topic expansions.${databaseToolSection}
+- "knowledge": ANY question, query, or request about the platform, product, documentation, technical details, features, usage, troubleshooting, or any topic that could potentially be in the knowledge base. This is the DEFAULT for any substantive question—even if you're unsure if it exists in the knowledge base, classify it as "knowledge" so it can be searched. Also includes follow-up questions like "what about X?", "can you explain more?", or topic expansions.
 - "greeting": ONLY simple greetings like "hi", "hello", "good morning", "hey" when they appear as the FIRST message in the conversation or as a clear conversation opener. If conversation history exists and contains assistant responses, this is likely NOT a greeting but an acknowledgment or knowledge query.
 - "acknowledgment": expressions of gratitude, confirmation, or acknowledgment like "thank you", "thanks", "got it", "perfect", "appreciate it", "okay", "alright". These show the user received the information and may or may not need further help.
 - "personality": questions about the assistant's identity, name, who they are, what they do, or introduction. Examples: "what's your name?", "who are you?", "tell me about yourself".
@@ -140,7 +113,6 @@ Definitions:
 
 Important:
 - DEFAULT to "knowledge" for any substantive question—let the knowledge base search determine if information exists.
-- Use "database_tool" for user-specific data queries (my profile, my email, my orders).
 - Use "greeting" ONLY for conversation openers. If history shows prior exchanges, "hi" or "hello" is likely just acknowledgment or transition.
 - Use "acknowledgment" for gratitude expressions—these are NOT greetings.
 - Use "personality" ONLY for questions about the assistant's identity/name, NOT for general conversation.
@@ -152,7 +124,6 @@ Important:
 
 Response Generation Guidelines:
 - For "knowledge" intent: leave "response" empty (it will be handled by knowledge base search)
-- For "database_tool" intent: leave "response" empty (tool will be executed and LLM will format result)
 - For all other intents: generate a natural, professional, contextually appropriate response
 - Consider conversation history when crafting the response (e.g., if user says "I changed my mind" after a support request, acknowledge the change)
 - For "greeting": welcome the user warmly
@@ -193,8 +164,7 @@ Response Generation Guidelines:
       'clarification',
       'guardrail',
       'human_support_request',
-      'human_support_email',
-      'database_tool'
+      'human_support_email'
     ];
 
     if (allowed.includes(intent)) {

@@ -1,9 +1,7 @@
 import { AIValidator, ValidationResult } from '@vezlo/ai-validator';
 import logger from '../config/logger';
 
-export interface ValidationMetadata {
-  confidence: number;
-  valid: boolean;
+export interface ValidationMetadata extends ValidationResult {
   status: 'validated' | 'warning' | 'failed';
 }
 
@@ -33,8 +31,8 @@ export class ValidationService {
           enableContextValidation: true,
           useLLMJudge: true,
           developerMode: developerMode,
-          enableAccuracyCheck: false,
-          enableHallucinationDetection: false
+          enableAccuracyCheck: true,
+          enableHallucinationDetection: true
         });
         logger.info(`✅ AI Validation service initialized (LLM Judge, ${developerMode ? 'Developer' : 'User'} Mode)`);
       } catch (error) {
@@ -82,8 +80,7 @@ export class ValidationService {
       logger.info(`🔍 Validation: ${status} (confidence: ${(result.confidence * 100).toFixed(1)}%)`);
 
       return {
-        confidence: result.confidence,
-        valid: result.valid,
+        ...result,
         status
       };
     } catch (error) {

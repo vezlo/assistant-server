@@ -10,6 +10,11 @@ export interface KnowledgeSearchResult {
     document_title: string;
     chunk_indices: number[];
   }>;
+  chunks: Array<{
+    chunk_text: string;
+    document_title: string;
+    document_uuid: string;
+  }>;
 }
 
 export interface GenerationResult {
@@ -77,12 +82,6 @@ export class ResponseGenerationService {
 
     logger.info(`🧾 Intent result: ${result.intent}${result.needsGuardrail ? ' (guardrail triggered)' : ''}`);
 
-    // Database tool intent - return null (handled by ChatController)
-    if (result.intent === 'database_tool') {
-      logger.info('🔧 Database tool intent detected; will be handled separately.');
-      return null;
-    }
-
     // For non-knowledge intents, return the response content to be streamed
     if (result.intent !== 'knowledge') {
       const responseContent = result.response || this.getFallbackResponse(result.intent);
@@ -106,12 +105,17 @@ export class ResponseGenerationService {
       document_title: string;
       chunk_indices: number[];
     }> = [];
+    const chunks: Array<{
+      chunk_text: string;
+      document_title: string;
+      document_uuid: string;
+    }> = [];
     let knowledgeResults: string | null = null;
 
     const aiServiceAny = this.aiService as any;
     if (!aiServiceAny || !aiServiceAny.knowledgeBaseService) {
       logger.warn('⚠️  AI service or knowledge base service not available');
-      return { knowledgeResults: null, sources: [] };
+      return { knowledgeResults: null, sources: [], chunks: [] };
     }
 
     try {
@@ -131,6 +135,24 @@ export class ResponseGenerationService {
           const content = result.content || '';
           if (content.trim()) {
             knowledgeResults += `- ${title}: ${content}\n`;
+            
+            // Store individual raw chunks for validation (not merged content)
+            if (result.raw_chunks && result.raw_chunks.length > 0) {
+              result.raw_chunks.forEach((rawChunk: any) => {
+                chunks.push({
+                  chunk_text: rawChunk.chunk_text,
+                  document_title: title,
+                  document_uuid: result.id
+                });
+              });
+            } else {
+              // Fallback: if no raw_chunks, use merged content
+              chunks.push({
+                chunk_text: content,
+                document_title: title,
+                document_uuid: result.id
+              });
+            }
             
             // Extract chunk indices from metadata.chunk_range (e.g., "0-2" -> [0,1,2])
             let chunkIndices: number[] = [];
@@ -183,7 +205,7 @@ export class ResponseGenerationService {
       knowledgeResults = null;
     }
 
-    return { knowledgeResults, sources };
+    return { knowledgeResults, sources, chunks };
   }
 
   /**

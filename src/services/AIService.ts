@@ -7,7 +7,6 @@ import {
   NavigationLink
 } from '../types';
 import { KnowledgeBaseService } from './KnowledgeBaseService';
-import { DatabaseToolService } from './DatabaseToolService';
 import logger from '../config/logger';
 
 export class AIService {
@@ -17,7 +16,6 @@ export class AIService {
   private navigationLinks: NavigationLink[];
   private knowledgeBase: string;
   private knowledgeBaseService?: KnowledgeBaseService;
-  private databaseToolService?: DatabaseToolService;
 
   constructor(config: AIServiceConfig) {
     this.config = config;
@@ -39,10 +37,6 @@ export class AIService {
     this.systemPrompt = this.buildSystemPrompt();
   }
 
-  setDatabaseToolService(service: DatabaseToolService): void {
-    this.databaseToolService = service;
-    logger.info('🔌 Database tool service attached to AI Service');
-  }
 
 
   private buildSystemPrompt(): string {
@@ -214,10 +208,6 @@ The knowledge base contains curated content ingested through the src-to-kb pipel
    */
   async *generateResponseStream(message: string, context?: ChatContext | any): AsyncGenerator<{ chunk: string; done: boolean; fullContent?: string }, void, unknown> {
     try {
-      // Check if tools would be needed - if so, log warning (tools not supported in streaming)
-      if (this.databaseToolService?.isEnabled()) {
-        logger.warn('⚠️ Database tools are enabled but not supported in streaming mode. Consider using non-streaming for tool calls.');
-      }
       let knowledgeResults: string = '';
       let hasKnowledgeContext = false;
       

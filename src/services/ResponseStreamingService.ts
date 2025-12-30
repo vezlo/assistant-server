@@ -71,6 +71,10 @@ export class ResponseStreamingService {
       confidence: number;
       valid: boolean;
       status: string;
+      accuracy: any;
+      context: any;
+      hallucination: any;
+      warnings: string[];
     } | null>) | null,
     query?: string
   ): Promise<string> {
