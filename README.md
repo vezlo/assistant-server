@@ -37,6 +37,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for complete migration guide.
 - **Human Agent Handoff** - Agent join/leave workflows with realtime status updates and message synchronization
 - **Advanced RAG System** - Chunk-based semantic search with adjacent retrieval using OpenAI text-embedding-3-large (3072 dims) and pgvector
 - **Conversation Management** - Persistent conversation history with agent support
+- **Database Tools** - Connect external Supabase databases for natural language data queries ([see docs](./docs/DATABASE_TOOLS.md))
 - **Slack Integration** - Direct query bot with full AI responses, conversation history, and reaction-based feedback ([setup guide](./docs/SLACK_INTEGRATION.md))
 - **Feedback System** - Message rating and improvement tracking
 - **Database Migrations** - Knex.js migration system for schema management

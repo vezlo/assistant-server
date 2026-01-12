@@ -1,3 +1,18 @@
+## [2.11.0] - 2026-01-12
+
+### Added
+- **Database Tools**: Connect external Supabase databases for natural language data queries
+- Dynamic tool creation via admin UI (select tables, columns, filters)
+- User-specific data filtering with configurable context keys (user_uuid, company_uuid, etc.)
+- Read-only schema introspection using Supabase OpenAPI
+- Generic LLM prompt for tool selection (works with any table/column structure)
+- 13 new API endpoints under `/api/database-tools/*`
+- AES-256 encrypted credential storage
+
+### Changed
+- Intent classification now includes dynamic database tools in LLM prompt
+- Chat API accepts optional `user_context` for database query filtering
+
 ## [2.10.0] - 2024-12-22
 
 ### Added

@@ -215,10 +215,7 @@ The knowledge base contains curated content ingested through the src-to-kb pipel
    */
   async *generateResponseStream(message: string, context?: ChatContext | any): AsyncGenerator<{ chunk: string; done: boolean; fullContent?: string }, void, unknown> {
     try {
-      // Check if tools would be needed - if so, log warning (tools not supported in streaming)
-      if (this.databaseToolService?.isEnabled()) {
-        logger.warn('⚠️ Database tools are enabled but not supported in streaming mode. Consider using non-streaming for tool calls.');
-      }
+      // Note: Database tools are handled separately in ChatController before streaming
       let knowledgeResults: string = '';
       let hasKnowledgeContext = false;
       

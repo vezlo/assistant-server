@@ -92,6 +92,7 @@ let authController: AuthController;
 let apiKeyController: ApiKeyController;
 let companyController: CompanyController;
 let slackController: SlackController;
+let databaseToolConfigController: any;
 
 async function initializeServices() {
   try {
@@ -110,6 +111,7 @@ async function initializeServices() {
     apiKeyController = controllers.apiKeyController;
     companyController = controllers.companyController;
     slackController = controllers.slackController;
+    databaseToolConfigController = controllers.databaseToolConfigController;
 
     logger.info('All services initialized successfully');
   } catch (error) {
@@ -366,6 +368,442 @@ app.get('/api/api-keys/status', authenticateUser(supabase), (req, res) => apiKey
    *         description: Internal server error
    */
   app.get('/api/company/analytics', authenticateUser(supabase), (req, res) => companyController.getAnalytics(req, res));
+
+// Database Tool Configuration API Routes
+/**
+ * @swagger
+ * /api/database-tools/config:
+ *   post:
+ *     summary: Create database configuration
+ *     description: Create external database configuration for tool integration (Admin only)
+ *     tags: [Database Tools]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - db_url
+ *               - db_key
+ *             properties:
+ *               db_url:
+ *                 type: string
+ *                 description: External database URL (Supabase)
+ *               db_key:
+ *                 type: string
+ *                 description: Database API key
+ *     responses:
+ *       201:
+ *         description: Configuration created successfully
+ *       409:
+ *         description: Configuration already exists
+ *       401:
+ *         description: Not authenticated
+ */
+  app.post('/api/database-tools/config', authenticateUser(supabase), (req, res) => 
+    databaseToolConfigController.createConfig(req, res)
+  );
+
+/**
+ * @swagger
+ * /api/database-tools/config:
+ *   get:
+ *     summary: Get database configuration
+ *     description: Get current company's database configuration
+ *     tags: [Database Tools]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Configuration retrieved successfully
+ *       404:
+ *         description: No configuration found
+ */
+  app.get('/api/database-tools/config', authenticateUser(supabase), (req, res) => 
+    databaseToolConfigController.getConfig(req, res)
+  );
+
+/**
+ * @swagger
+ * /api/database-tools/config/{configId}:
+ *   put:
+ *     summary: Update database configuration
+ *     description: Update database configuration
+ *     tags: [Database Tools]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: configId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               db_url:
+ *                 type: string
+ *               db_key:
+ *                 type: string
+ *               enabled:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Configuration updated successfully
+ */
+  app.put('/api/database-tools/config/:configId', authenticateUser(supabase), (req, res) => 
+    databaseToolConfigController.updateConfig(req, res)
+  );
+
+/**
+ * @swagger
+ * /api/database-tools/config/{configId}:
+ *   delete:
+ *     summary: Delete database configuration
+ *     description: Delete database configuration and all associated tools
+ *     tags: [Database Tools]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: configId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Configuration deleted successfully
+ */
+  app.delete('/api/database-tools/config/:configId', authenticateUser(supabase), (req, res) => 
+    databaseToolConfigController.deleteConfig(req, res)
+  );
+
+/**
+ * @swagger
+ * /api/database-tools/validate:
+ *   post:
+ *     summary: Validate database connection
+ *     description: Test database connection and credentials
+ *     tags: [Database Tools]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - db_url
+ *               - db_key
+ *             properties:
+ *               db_url:
+ *                 type: string
+ *               db_key:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Validation result
+ */
+  app.post('/api/database-tools/validate', authenticateUser(supabase), (req, res) => 
+    databaseToolConfigController.validateConnection(req, res)
+  );
+
+/**
+ * @swagger
+ * /api/database-tools/tables:
+ *   post:
+ *     summary: Get database tables
+ *     description: Introspect database and get list of available tables
+ *     tags: [Database Tools]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - db_url
+ *               - db_key
+ *             properties:
+ *               db_url:
+ *                 type: string
+ *               db_key:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: List of tables
+ */
+  app.post('/api/database-tools/tables', authenticateUser(supabase), (req, res) => 
+    databaseToolConfigController.getTables(req, res)
+  );
+
+/**
+ * @swagger
+ * /api/database-tools/tables/{tableName}/schema:
+ *   post:
+ *     summary: Get table schema
+ *     description: Get columns and types for a specific table
+ *     tags: [Database Tools]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: tableName
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - db_url
+ *               - db_key
+ *             properties:
+ *               db_url:
+ *                 type: string
+ *               db_key:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Table schema with columns
+ */
+  app.post('/api/database-tools/tables/:tableName/schema', authenticateUser(supabase), (req, res) => 
+    databaseToolConfigController.getTableSchema(req, res)
+  );
+
+/**
+ * @swagger
+ * /api/database-tools/config/{configId}/tables:
+ *   get:
+ *     summary: Get available tables from saved config
+ *     description: Retrieve tables from existing database configuration
+ *     tags: [Database Tools]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: configId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of tables
+ */
+  app.get('/api/database-tools/config/:configId/tables', authenticateUser(supabase), (req, res) => 
+    databaseToolConfigController.getTablesFromConfig(req, res)
+  );
+
+/**
+ * @swagger
+ * /api/database-tools/config/{configId}/tables/{tableName}/schema:
+ *   get:
+ *     summary: Get table schema from saved config
+ *     description: Get table columns from existing database configuration
+ *     tags: [Database Tools]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: configId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: tableName
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Table schema with columns
+ */
+  app.get('/api/database-tools/config/:configId/tables/:tableName/schema', authenticateUser(supabase), (req, res) => 
+    databaseToolConfigController.getTableSchemaFromConfig(req, res)
+  );
+
+/**
+ * @swagger
+ * /api/database-tools/tools:
+ *   post:
+ *     summary: Create a database tool
+ *     description: Create a tool for a specific table with optional user-specific filtering
+ *     tags: [Database Tools]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - config_id
+ *               - table_name
+ *               - tool_name
+ *               - columns
+ *               - id_column
+ *             properties:
+ *               config_id:
+ *                 type: string
+ *                 description: Database configuration UUID
+ *               table_name:
+ *                 type: string
+ *                 description: Name of the database table
+ *               tool_name:
+ *                 type: string
+ *                 description: Name of the AI tool (function name)
+ *               tool_description:
+ *                 type: string
+ *                 description: Description of what the tool does
+ *               columns:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: List of column names to include
+ *               id_column:
+ *                 type: string
+ *                 description: Primary key column name
+ *               id_column_type:
+ *                 type: string
+ *                 enum: [integer, uuid, string]
+ *                 description: Data type of the primary key
+ *               requires_user_context:
+ *                 type: boolean
+ *                 description: Enable user-specific data filtering
+ *               user_filter_column:
+ *                 type: string
+ *                 description: Column to filter by (e.g., user_uuid)
+ *               user_filter_type:
+ *                 type: string
+ *                 enum: [integer, uuid, string]
+ *                 description: Data type of the filter column
+ *               user_context_key:
+ *                 type: string
+ *                 description: Key from widget userContext (e.g., user_uuid, company_uuid)
+ *     responses:
+ *       201:
+ *         description: Tool created successfully
+ */
+  app.post('/api/database-tools/tools', authenticateUser(supabase), (req, res) => 
+    databaseToolConfigController.createTool(req, res)
+  );
+
+/**
+ * @swagger
+ * /api/database-tools/tools:
+ *   get:
+ *     summary: Get all tools
+ *     description: Get all enabled database tools for current company
+ *     tags: [Database Tools]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of tools
+ */
+  app.get('/api/database-tools/tools', authenticateUser(supabase), (req, res) => 
+    databaseToolConfigController.getTools(req, res)
+  );
+
+/**
+ * @swagger
+ * /api/database-tools/tools/{toolId}:
+ *   put:
+ *     summary: Update a tool
+ *     description: Update tool configuration including user filtering settings
+ *     tags: [Database Tools]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: toolId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Tool UUID
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               tool_name:
+ *                 type: string
+ *                 description: Name of the AI tool
+ *               tool_description:
+ *                 type: string
+ *                 description: Description of the tool
+ *               columns:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: List of column names
+ *               id_column:
+ *                 type: string
+ *                 description: Primary key column name
+ *               id_column_type:
+ *                 type: string
+ *                 enum: [integer, uuid, string]
+ *                 description: Data type of primary key
+ *               enabled:
+ *                 type: boolean
+ *                 description: Enable or disable the tool
+ *               requires_user_context:
+ *                 type: boolean
+ *                 description: Enable user-specific filtering
+ *               user_filter_column:
+ *                 type: string
+ *                 description: Column to filter by
+ *               user_filter_type:
+ *                 type: string
+ *                 enum: [integer, uuid, string]
+ *                 description: Data type of filter column
+ *               user_context_key:
+ *                 type: string
+ *                 description: Key from widget userContext
+ *     responses:
+ *       200:
+ *         description: Tool updated successfully
+ */
+  app.put('/api/database-tools/tools/:toolId', authenticateUser(supabase), (req, res) => 
+    databaseToolConfigController.updateTool(req, res)
+  );
+
+/**
+ * @swagger
+ * /api/database-tools/tools/{toolId}:
+ *   delete:
+ *     summary: Delete a tool
+ *     description: Delete database tool
+ *     tags: [Database Tools]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: toolId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Tool deleted successfully
+ */
+  app.delete('/api/database-tools/tools/:toolId', authenticateUser(supabase), (req, res) => 
+    databaseToolConfigController.deleteTool(req, res)
+  );
 
 // Chat API Routes
 /**

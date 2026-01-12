@@ -1,5 +1,6 @@
 import { IntentService, IntentClassificationResult } from './IntentService';
 import { AIService } from './AIService';
+import { DatabaseToolService } from './DatabaseToolService';
 import { ChatMessage } from '../types';
 import logger from '../config/logger';
 
@@ -34,22 +35,25 @@ export interface GenerationResult {
 export class ResponseGenerationService {
   private intentService?: IntentService;
   private aiService?: AIService;
+  private databaseToolService?: DatabaseToolService;
   private chatHistoryLength: number;
 
   constructor(
     intentService: IntentService | undefined,
     aiService: AIService | undefined,
-    chatHistoryLength: number
+    chatHistoryLength: number,
+    databaseToolService?: DatabaseToolService
   ) {
     this.intentService = intentService;
     this.aiService = aiService;
+    this.databaseToolService = databaseToolService;
     this.chatHistoryLength = chatHistoryLength;
   }
 
   /**
-   * Classify user intent
+   * Classify user intent with dynamic tool support
    */
-  async classifyIntent(message: string, history: ChatMessage[]): Promise<IntentClassificationResult> {
+  async classifyIntent(message: string, history: ChatMessage[], companyId?: number): Promise<IntentClassificationResult> {
     if (!this.intentService) {
       return {
         intent: 'knowledge',
@@ -61,9 +65,30 @@ export class ResponseGenerationService {
     const resolvedHistory = Array.isArray(history) ? history : [];
     logger.info('🧭 Classifying user intent...');
 
+    // Fetch available tools if companyId provided and databaseToolService exists
+    let availableTools: Array<{ name: string; description: string; parameters: Record<string, any> }> = [];
+    
+    if (companyId && this.databaseToolService) {
+      try {
+        const toolDefinitions = await this.databaseToolService.getToolsForCompany(companyId);
+        availableTools = toolDefinitions.map((tool: any) => ({
+          name: tool.function.name,
+          description: tool.function.description,
+          parameters: tool.function.parameters
+        }));
+        
+        if (availableTools.length > 0) {
+          logger.info(`🔧 Loaded ${availableTools.length} dynamic tools for company ${companyId}`);
+        }
+      } catch (error) {
+        logger.error('Failed to load dynamic tools:', error);
+      }
+    }
+
     return this.intentService.classify({
       message,
-      conversationHistory: resolvedHistory
+      conversationHistory: resolvedHistory,
+      availableTools: availableTools.length > 0 ? availableTools : undefined
     });
   }
 

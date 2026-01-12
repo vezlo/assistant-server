@@ -36,6 +36,11 @@ export interface IntentClassificationResult {
 interface ClassificationInput {
   message: string;
   conversationHistory?: ChatMessage[];
+  availableTools?: Array<{
+    name: string;
+    description: string;
+    parameters: Record<string, any>;
+  }>;
 }
 
 export class IntentService {
@@ -96,23 +101,33 @@ export class IntentService {
 
   private buildClassifierPrompt(input: ClassificationInput): OpenAI.Chat.Completions.ChatCompletionMessageParam[] {
     const history = input.conversationHistory || [];
+    const availableTools = input.availableTools || [];
     // Use all provided history (already limited by CHAT_HISTORY_LENGTH in ChatController)
     // No need to trim further - respect the configured limit
 
-    const databaseToolSection = this.databaseToolsEnabled ? `
-- "database_tool": user asks for THEIR OWN personal data, profile, orders, account info, or user-specific information from the database. Examples: "show my details", "what's my email", "get my profile", "my orders", "my account info". When detected, provide tool_call in this format:
-  - tool_call: { "tool_name": "get_user_details", "parameters": {} }
+    // Build dynamic tool section
+    let databaseToolSection = '';
+    if (availableTools.length > 0) {
+      const toolDescriptions = availableTools.map(tool => 
+        `- ${tool.name}: ${tool.description}. Parameters: ${JSON.stringify(tool.parameters)}`
+      ).join('\n');
+
+      databaseToolSection = `
+- "database_tool": user asks for data from the connected database. This includes requests for personal data, records, lists, or any information stored in the database. Examples: "show my profile", "get my orders", "list my messages", "what are my companies", "my account details". When detected, provide tool_call in this format:
+  - tool_call: { "tool_name": "<tool_name>", "parameters": { "<param_name>": "<value>" } }
   
 Available Database Tools:
-- get_user_details: Fetches user profile (email, name, display name). Use for: "show my profile", "what's my email", "my details", "my account". Parameters: empty object {}
+${toolDescriptions}
 
 Tool Selection:
-- If user asks about THEIR data (my profile, my email, my info), use "database_tool" intent with appropriate tool_call
-- If user asks about PLATFORM features/docs, use "knowledge" intent
-- "database_tool" takes priority over "knowledge" for user-specific queries
-- Always set parameters to empty object {} for get_user_details` : '';
+- Match user's request to the most appropriate tool based on tool name and description
+- Use "database_tool" intent for ANY query requesting data from the database (user data, records, lists, etc.)
+- Use "knowledge" intent only for questions about PLATFORM features, documentation, or how-to questions
+- "database_tool" takes priority over "knowledge" for data retrieval queries
+- Extract parameter values from user message or use empty object {} if no specific parameters provided`;
+    }
 
-    const intentList = this.databaseToolsEnabled 
+    const intentList = availableTools.length > 0
       ? '["knowledge","greeting","acknowledgment","personality","clarification","guardrail","human_support_request","human_support_email","database_tool"]'
       : '["knowledge","greeting","acknowledgment","personality","clarification","guardrail","human_support_request","human_support_email"]';
 

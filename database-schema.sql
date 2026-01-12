@@ -66,6 +66,10 @@ INSERT INTO knex_migrations (name, batch, migration_time)
 SELECT '010_add_slack_fields.ts', 1, NOW()
 WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '010_add_slack_fields.ts');
 
+INSERT INTO knex_migrations (name, batch, migration_time) 
+SELECT '011_create_database_tool_configs.ts', 1, NOW()
+WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '011_create_database_tool_configs.ts');
+
 -- Set migration lock to unlocked (0 = unlocked, 1 = locked)
 INSERT INTO knex_migrations_lock (index, is_locked) 
 VALUES (1, 0)
@@ -617,3 +621,43 @@ BEGIN
   RETURN result;
 END;
 $$;
+
+-- ============================================================================
+-- DATABASE TOOLS SCHEMA (Migration 011)
+-- ============================================================================
+
+-- External database configurations
+CREATE TABLE IF NOT EXISTS vezlo_database_tool_configs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id BIGINT NOT NULL REFERENCES vezlo_companies(id) ON DELETE CASCADE,
+  db_url_encrypted TEXT NOT NULL,
+  db_key_encrypted TEXT NOT NULL,
+  enabled BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_database_tool_configs_company_id ON vezlo_database_tool_configs(company_id);
+
+-- Individual tool configurations
+CREATE TABLE IF NOT EXISTS vezlo_database_tools (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  config_id UUID NOT NULL REFERENCES vezlo_database_tool_configs(id) ON DELETE CASCADE,
+  table_name TEXT NOT NULL,
+  tool_name TEXT NOT NULL,
+  tool_description TEXT,
+  columns JSONB NOT NULL,
+  id_column TEXT NOT NULL DEFAULT 'id',
+  id_column_type TEXT NOT NULL DEFAULT 'integer',
+  enabled BOOLEAN DEFAULT true,
+  requires_user_context BOOLEAN DEFAULT false,
+  user_filter_column TEXT,
+  user_filter_type TEXT,
+  user_context_key TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(config_id, table_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_database_tools_config_id ON vezlo_database_tools(config_id);
+CREATE INDEX IF NOT EXISTS idx_database_tools_enabled ON vezlo_database_tools(enabled);

@@ -45,7 +45,8 @@ export class ChatController {
     this.responseGenerationService = new ResponseGenerationService(
       this.intentService,
       aiService,
-      this.chatHistoryLength
+      this.chatHistoryLength,
+      this.databaseToolService
     );
     this.responseStreamingService = new ResponseStreamingService();
   }
@@ -193,7 +194,7 @@ export class ChatController {
   // Create a user message in a conversation
   async createUserMessage(req: Request, res: Response): Promise<void> {
     try {
-      const { uuid } = req.params;
+      const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
       const { content } = req.body;
 
       if (!content) {
@@ -281,7 +282,7 @@ export class ChatController {
 
   // Generate AI response for a user message
   async generateResponse(req: AuthenticatedRequest, res: Response): Promise<void> {
-    const { uuid } = req.params;
+    const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
     if (!uuid) {
       res.status(400).json({ error: 'Message UUID is required' });
       return;
@@ -302,6 +303,9 @@ export class ChatController {
 
       const conversationId = userMessage.conversationId;
       const userMessageContent = userMessage.content;
+      
+      // Extract user_context from request body (optional)
+      const userContext = req.body?.user_context || {};
 
       // Get conversation context (recent messages)
       // Exclude the current user message to avoid duplication (it's added separately as the query)
@@ -323,8 +327,9 @@ export class ChatController {
       // Set up Server-Sent Events (SSE) headers for streaming
       this.responseStreamingService.setupSSEHeaders(res);
 
-      // Run intent classification to decide handling strategy
-      const intentResult = await this.responseGenerationService.classifyIntent(userMessageContent, messages);
+      // Run intent classification to decide handling strategy (with dynamic tools)
+      const companyId = conversation?.organizationId ? parseInt(String(conversation.organizationId), 10) : undefined;
+      const intentResult = await this.responseGenerationService.classifyIntent(userMessageContent, messages, companyId);
       const intentResponse = this.responseGenerationService.handleIntentResult(intentResult, userMessageContent);
 
       let accumulatedContent = '';
@@ -336,23 +341,21 @@ export class ChatController {
         if (intentResult.intent === 'database_tool' && intentResult.toolCall) {
           logger.info(`🔧 Database tool call detected: ${intentResult.toolCall.toolName}`);
           
-          if (!this.databaseToolService?.isEnabled()) {
-            logger.warn('⚠️ Database tool requested but service not enabled');
+          if (!this.databaseToolService || !companyId) {
+            logger.warn('⚠️ Database tool requested but service not available or no company ID');
             await this.responseStreamingService.streamTextContent(
-              'I apologize, but I cannot access user data at the moment. Please contact support.',
+              'I apologize, but I cannot access your data at the moment. Please contact support.',
               res
             );
-            accumulatedContent = 'I apologize, but I cannot access user data at the moment. Please contact support.';
+            accumulatedContent = 'I apologize, but I cannot access your data at the moment. Please contact support.';
           } else {
-            // Get user context
-            const userId = process.env.TEST_USER_UUID || req.user?.id || 'anonymous';
-            
-            // Execute tool
-            logger.info(`🔧 Executing tool: ${intentResult.toolCall.toolName} for user: ${userId}`);
+            // Execute tool with dynamic parameters and user context
+            logger.info(`🔧 Executing tool: ${intentResult.toolCall.toolName} for company: ${companyId}`);
             const toolResult = await this.databaseToolService.executeTool(
               intentResult.toolCall.toolName,
-              { ...intentResult.toolCall.parameters, user_id: userId },
-              { userId }
+              intentResult.toolCall.parameters,
+              companyId,
+              userContext // Pass user context for filtering
             );
             
             // Check if tool execution was successful
@@ -388,7 +391,7 @@ export class ChatController {
                     content: `User asked: "${userMessageContent}"
 
 Database returned:
-${JSON.stringify(toolResult.user, null, 2)}
+${JSON.stringify(toolResult.data || toolResult, null, 2)}
 
 Provide a natural, friendly response to the user's question using this data.`
                   }
@@ -552,7 +555,7 @@ Provide a natural, friendly response to the user's question using this data.`
         return;
       }
 
-      const { uuid } = req.params;
+      const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
       const conversation = await this.storage.getConversation(uuid);
 
       if (!conversation) {
@@ -607,7 +610,7 @@ Provide a natural, friendly response to the user's question using this data.`
         return;
       }
 
-      const { uuid } = req.params;
+      const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
       const page = Math.max(1, parseInt((req.query.page as string) || '1', 10) || 1);
       const pageSizeRaw = parseInt((req.query.page_size as string) || '50', 10);
       const pageSize = Math.min(200, Math.max(1, isNaN(pageSizeRaw) ? 50 : pageSizeRaw));
@@ -667,7 +670,7 @@ Provide a natural, friendly response to the user's question using this data.`
         return;
       }
 
-      const { uuid } = req.params;
+      const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
       const conversation = await this.storage.getConversation(uuid);
 
       if (!conversation) {
@@ -770,7 +773,7 @@ Provide a natural, friendly response to the user's question using this data.`
         return;
       }
 
-      const { uuid } = req.params;
+      const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
       const conversation = await this.storage.getConversation(uuid);
 
       if (!conversation) {
@@ -870,7 +873,7 @@ Provide a natural, friendly response to the user's question using this data.`
         return;
       }
 
-      const { uuid } = req.params;
+      const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
       const conversation = await this.storage.getConversation(uuid);
 
       if (!conversation) {
@@ -947,7 +950,7 @@ Provide a natural, friendly response to the user's question using this data.`
         return;
       }
 
-      const { uuid } = req.params;
+      const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
       const { content } = req.body;
 
       if (!content) {
@@ -1109,7 +1112,7 @@ Provide a natural, friendly response to the user's question using this data.`
   // Delete conversation
   async deleteConversation(req: Request, res: Response): Promise<void> {
     try {
-      const { uuid } = req.params;
+      const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
       const success = await this.storage.deleteConversation(uuid);
 
       if (!success) {
@@ -1195,7 +1198,7 @@ Provide a natural, friendly response to the user's question using this data.`
   // Delete/undo message feedback - Public API
   async deleteFeedback(req: Request | AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const { uuid } = req.params;
+      const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
 
       if (!uuid) {
         res.status(400).json({ error: 'Feedback UUID is required' });

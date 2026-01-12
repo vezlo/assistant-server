@@ -91,6 +91,7 @@ let authController: AuthController;
 let apiKeyController: ApiKeyController;
 let companyController: CompanyController;
 let slackController: SlackController;
+let databaseToolConfigController: any;
 let supabase: any;
 let realtimePublisher: RealtimePublisher | null = null;
 
@@ -120,6 +121,7 @@ async function initializeServices() {
     apiKeyController = controllers.apiKeyController;
     companyController = controllers.companyController;
     slackController = controllers.slackController;
+    databaseToolConfigController = controllers.databaseToolConfigController;
 
     servicesInitialized = true;
     logger.info('All services initialized successfully');
@@ -316,6 +318,21 @@ app.get('/api/api-keys/status', requireServices, requireAuth, (req, res) => apiK
  *         description: Internal server error
  */
 app.get('/api/company/analytics', requireServices, requireAuth, (req, res) => companyController.getAnalytics(req, res));
+
+// Database Tool Configuration APIs
+app.post('/api/database-tools/config', requireServices, requireAuth, (req, res) => databaseToolConfigController.createConfig(req, res));
+app.get('/api/database-tools/config', requireServices, requireAuth, (req, res) => databaseToolConfigController.getConfig(req, res));
+app.put('/api/database-tools/config/:configId', requireServices, requireAuth, (req, res) => databaseToolConfigController.updateConfig(req, res));
+app.delete('/api/database-tools/config/:configId', requireServices, requireAuth, (req, res) => databaseToolConfigController.deleteConfig(req, res));
+app.post('/api/database-tools/validate', requireServices, requireAuth, (req, res) => databaseToolConfigController.validateConnection(req, res));
+app.post('/api/database-tools/tables', requireServices, requireAuth, (req, res) => databaseToolConfigController.getTables(req, res));
+app.post('/api/database-tools/tables/:tableName/schema', requireServices, requireAuth, (req, res) => databaseToolConfigController.getTableSchema(req, res));
+app.get('/api/database-tools/config/:configId/tables', requireServices, requireAuth, (req, res) => databaseToolConfigController.getTablesFromConfig(req, res));
+app.get('/api/database-tools/config/:configId/tables/:tableName/schema', requireServices, requireAuth, (req, res) => databaseToolConfigController.getTableSchemaFromConfig(req, res));
+app.post('/api/database-tools/tools', requireServices, requireAuth, (req, res) => databaseToolConfigController.createTool(req, res));
+app.get('/api/database-tools/tools', requireServices, requireAuth, (req, res) => databaseToolConfigController.getTools(req, res));
+app.put('/api/database-tools/tools/:toolId', requireServices, requireAuth, (req, res) => databaseToolConfigController.updateTool(req, res));
+app.delete('/api/database-tools/tools/:toolId', requireServices, requireAuth, (req, res) => databaseToolConfigController.deleteTool(req, res));
 
 // Conversation APIs (Public - No Authentication Required for Widget)
 app.post('/api/conversations', requireServices, (req, res) => chatController.createConversation(req, res));

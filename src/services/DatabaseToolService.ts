@@ -1,8 +1,8 @@
 /**
- * DatabaseToolService - External Database Integration
+ * DatabaseToolService - Dynamic External Database Integration
  * 
  * This service enables tool-based queries to external databases (e.g., Supabase)
- * Supports dynamic schema introspection and user-specific queries with RLS
+ * Dynamically loads tool configurations from database and executes queries
  * 
  * NOTE: This is a separate experimental feature for direct database integration
  * Can be easily removed without affecting core functionality
@@ -10,6 +10,7 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import logger from '../config/logger';
+import { DatabaseToolConfigService, DatabaseTool } from './DatabaseToolConfigService';
 
 export interface DatabaseConfig {
   url: string;
@@ -18,8 +19,11 @@ export interface DatabaseConfig {
 }
 
 export interface UserQueryContext {
-  userId: string;
-  companyId?: string;
+  userId?: string;
+  companyId?: number;
+  user_uuid?: string;
+  company_uuid?: string;
+  [key: string]: any; // Allow any additional context keys
 }
 
 export interface ToolDefinition {
@@ -36,208 +40,321 @@ export interface ToolDefinition {
 }
 
 export class DatabaseToolService {
-  private client: SupabaseClient | null = null;
-  private enabled: boolean = false;
+  private configService: DatabaseToolConfigService;
+  private mainSupabase: SupabaseClient; // Main Vezlo database
   private tableSchemas: Map<string, any> = new Map();
+  
+  // Cache for external database clients per company
+  private clientCache: Map<number, SupabaseClient> = new Map();
 
-  constructor(config: DatabaseConfig) {
-    if (config.enabled && config.url && config.key) {
-      try {
-        this.client = createClient(config.url, config.key);
-        this.enabled = true;
-        logger.info('🔌 Database Tool Service initialized');
-      } catch (error) {
-        logger.error('Failed to initialize Database Tool Service:', error);
-        this.enabled = false;
-      }
-    } else {
-      logger.info('🔌 Database Tool Service disabled (no config)');
+  constructor(mainSupabase: SupabaseClient, configService: DatabaseToolConfigService) {
+    this.mainSupabase = mainSupabase;
+    this.configService = configService;
+    logger.info('🔌 Dynamic Database Tool Service initialized');
+  }
+
+  /**
+   * Get or create external database client for a company
+   */
+  private async getExternalClient(companyId: number): Promise<SupabaseClient | null> {
+    // Check cache
+    if (this.clientCache.has(companyId)) {
+      return this.clientCache.get(companyId)!;
+    }
+
+    // Fetch credentials
+    const credentials = await this.configService.getDecryptedCredentials(companyId);
+    
+    if (!credentials) {
+      return null;
+    }
+
+    // Create client
+    try {
+      const client = createClient(credentials.url, credentials.key);
+      this.clientCache.set(companyId, client);
+      logger.info(`✅ Created external database client for company ${companyId}`);
+      return client;
+    } catch (error) {
+      logger.error(`Failed to create external client for company ${companyId}:`, error);
+      return null;
     }
   }
 
-  isEnabled(): boolean {
-    return this.enabled && this.client !== null;
+  /**
+   * Clear client cache (e.g., after config update)
+   */
+  clearClientCache(companyId?: number): void {
+    if (companyId) {
+      this.clientCache.delete(companyId);
+      logger.info(`🧹 Cleared client cache for company ${companyId}`);
+    } else {
+      this.clientCache.clear();
+      logger.info('🧹 Cleared all client caches');
+    }
   }
 
   /**
    * Get table schema by introspecting the database
    */
-  private async getTableSchema(tableName: string): Promise<any> {
-    if (!this.client) {
-      throw new Error('Database client not initialized');
-    }
-
+  private async getTableSchema(client: SupabaseClient, tableName: string, companyId: number): Promise<string[]> {
+    const cacheKey = `${companyId}:${tableName}`;
+    
     // Check cache
-    if (this.tableSchemas.has(tableName)) {
-      return this.tableSchemas.get(tableName);
+    if (this.tableSchemas.has(cacheKey)) {
+      return this.tableSchemas.get(cacheKey);
     }
 
     try {
       // Fetch a single row to understand structure
-      const { data, error } = await this.client
+      const { data, error } = await client
         .from(tableName)
         .select('*')
         .limit(1);
 
       if (error) {
         logger.warn(`Failed to introspect table ${tableName}:`, error);
-        return null;
+        return [];
       }
 
       const schema = data && data.length > 0 ? Object.keys(data[0]) : [];
-      this.tableSchemas.set(tableName, schema);
+      this.tableSchemas.set(cacheKey, schema);
       
       logger.info(`📊 Introspected table ${tableName}: ${schema.length} columns`);
       return schema;
     } catch (error) {
       logger.error(`Error introspecting table ${tableName}:`, error);
-      return null;
-    }
-  }
-
-  /**
-   * Get available tools for LLM function calling
-   */
-  getTools(): ToolDefinition[] {
-    if (!this.isEnabled()) {
       return [];
     }
-
-    return [
-      {
-        type: 'function',
-        function: {
-          name: 'get_user_details',
-          description: 'Fetch user profile details from the database including email, full name, and display name',
-          parameters: {
-            type: 'object',
-            properties: {
-              user_id: {
-                type: 'string',
-                description: 'The UUID of the user to fetch details for'
-              }
-            },
-            required: ['user_id']
-          }
-        }
-      }
-    ];
   }
 
   /**
-   * Execute a tool call
+   * Get available tools for a company for LLM function calling
+   */
+  async getToolsForCompany(companyId: number): Promise<ToolDefinition[]> {
+    try {
+      const tools = await this.configService.getEnabledToolsByCompany(companyId);
+      
+      if (!tools || tools.length === 0) {
+        return [];
+      }
+
+      // Convert database tool configs to LLM tool definitions
+      return tools.map(tool => this.convertToToolDefinition(tool));
+    } catch (error) {
+      logger.error(`Failed to get tools for company ${companyId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Convert database tool config to LLM tool definition
+   */
+  private convertToToolDefinition(tool: DatabaseTool): ToolDefinition {
+    const columns = typeof tool.columns === 'string' ? JSON.parse(tool.columns) : tool.columns;
+    
+    // If user context filtering is enabled, ID becomes optional
+    const required = tool.requires_user_context ? [] : [tool.id_column];
+    
+    return {
+      type: 'function',
+      function: {
+        name: tool.tool_name,
+        description: tool.tool_description || `Fetch data from ${tool.table_name} table`,
+        parameters: {
+          type: 'object',
+          properties: {
+            [tool.id_column]: {
+              type: tool.id_column_type === 'integer' ? 'integer' : 'string',
+              description: `The ${tool.id_column} to query (optional if user context is used)`
+            }
+          },
+          required
+        }
+      }
+    };
+  }
+
+  /**
+   * Execute a dynamic tool call
    */
   async executeTool(
     toolName: string,
     parameters: Record<string, any>,
+    companyId: number,
     userContext?: UserQueryContext
   ): Promise<any> {
-    if (!this.isEnabled()) {
-      throw new Error('Database tool service is not enabled');
+    logger.info(`🔧 Executing dynamic tool: ${toolName} for company ${companyId} with params:`, parameters);
+    if (userContext) {
+      logger.info(`🔧 User context provided:`, userContext);
     }
 
-    logger.info(`🔧 Executing tool: ${toolName} with params:`, parameters);
+    try {
+      // Get the tool configuration
+      const tools = await this.configService.getEnabledToolsByCompany(companyId);
+      const tool = tools.find(t => t.tool_name === toolName);
 
-    switch (toolName) {
-      case 'get_user_details':
-        return this.getUserDetails(parameters.user_id);
-      default:
-        throw new Error(`Unknown tool: ${toolName}`);
+      if (!tool) {
+        return {
+          success: false,
+          error: `Tool '${toolName}' not found or not enabled`
+        };
+      }
+
+      // Get external database client
+      const client = await this.getExternalClient(companyId);
+
+      if (!client) {
+        return {
+          success: false,
+          error: 'External database not configured for this company'
+        };
+      }
+
+      // Execute the query
+      return await this.executeToolQuery(client, tool, parameters, companyId, userContext);
+    } catch (error: any) {
+      logger.error(`Error executing tool ${toolName}:`, error);
+      return {
+        success: false,
+        error: error.message || 'Tool execution failed'
+      };
     }
   }
 
   /**
-   * Tool Implementation: Get User Details
+   * Execute a query for a specific tool
    */
-  private async getUserDetails(userId: string): Promise<any> {
-    if (!this.client) {
-      throw new Error('Database client not initialized');
-    }
-
+  private async executeToolQuery(
+    client: SupabaseClient,
+    tool: DatabaseTool,
+    parameters: Record<string, any>,
+    companyId: number,
+    userContext?: UserQueryContext
+  ): Promise<any> {
     try {
-      // First, introspect the table to understand its structure
-      const schema = await this.getTableSchema('users');
+      // Parse columns from tool config
+      const columns = typeof tool.columns === 'string' ? JSON.parse(tool.columns) : tool.columns;
       
-      if (!schema) {
+      // Introspect table to verify columns exist
+      const schema = await this.getTableSchema(client, tool.table_name, companyId);
+      
+      if (!schema || schema.length === 0) {
         return {
           success: false,
-          error: 'Unable to access users table or table does not exist'
+          error: `Unable to access table '${tool.table_name}'`
         };
       }
 
-      // Build dynamic select based on available columns
-      const selectFields = ['id'];
-      const desiredFields = ['email', 'full_name', 'display_name', 'name', 'username', 'uuid'];
+      // Filter columns to only those that exist in the schema
+      const validColumns = columns.filter((col: string) => schema.includes(col));
       
-      desiredFields.forEach(field => {
-        if (schema.includes(field)) {
-          selectFields.push(field);
-        }
-      });
-
-      logger.info(`🔍 Querying users table with fields: ${selectFields.join(', ')}`);
-
-      // Determine ID column type - try uuid first, then id
-      let query;
-      if (schema.includes('uuid')) {
-        // UUID column exists - query by uuid
-        logger.info(`🔑 Using uuid column for query`);
-        query = this.client
-          .from('users')
-          .select(selectFields.join(','))
-          .eq('uuid', userId)
-          .single();
-      } else if (userId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-        // userId looks like UUID but no uuid column - try id as uuid type
-        logger.info(`🔑 Using id column as UUID for query`);
-        query = this.client
-          .from('users')
-          .select(selectFields.join(','))
-          .eq('id', userId)
-          .single();
-      } else {
-        // Try as integer
-        logger.info(`🔑 Using id column as integer for query`);
-        const numericId = parseInt(userId, 10);
-        if (isNaN(numericId)) {
-          return {
-            success: false,
-            error: 'Invalid user ID format'
-          };
-        }
-        query = this.client
-          .from('users')
-          .select(selectFields.join(','))
-          .eq('id', numericId)
-          .single();
-      }
-
-      // Execute query
-      const { data, error } = await query;
-
-      if (error) {
-        logger.error('Database query error:', error);
+      if (validColumns.length === 0) {
         return {
           success: false,
-          error: `Failed to fetch user details: ${error.message}`
+          error: 'No valid columns configured for this tool'
+        };
+      }
+
+      // Ensure ID column is included (if configured)
+      if (tool.id_column && !validColumns.includes(tool.id_column)) {
+        validColumns.unshift(tool.id_column);
+      }
+
+      logger.info(`🔍 Querying ${tool.table_name} with fields: ${validColumns.join(', ')}`);
+
+      // Build READ-ONLY query (only SELECT, no INSERT/UPDATE/DELETE)
+      let query = client
+        .from(tool.table_name)
+        .select(validColumns.join(','));
+
+      // Apply user context filter FIRST (if configured)
+      if (tool.requires_user_context && tool.user_filter_column && tool.user_context_key) {
+        if (!userContext || !userContext[tool.user_context_key]) {
+          logger.warn(`⚠️ Tool requires user context but '${tool.user_context_key}' not provided`);
+          // Don't fail - just return empty result gracefully
+          return {
+            success: true,
+            data: null,
+            message: 'User context not available'
+          };
+        }
+
+        const filterValue = userContext[tool.user_context_key];
+        logger.info(`🔐 Applying user filter: ${tool.user_filter_column} = ${filterValue}`);
+
+        // Apply filter based on type
+        if (tool.user_filter_type === 'integer') {
+          const numericValue = parseInt(String(filterValue), 10);
+          if (!isNaN(numericValue)) {
+            query = query.eq(tool.user_filter_column, numericValue);
+          }
+        } else {
+          query = query.eq(tool.user_filter_column, String(filterValue));
+        }
+      }
+
+      // Apply ID filter (if provided in parameters and valid)
+      if (tool.id_column && parameters[tool.id_column] !== undefined && parameters[tool.id_column] !== null) {
+        const idValue = parameters[tool.id_column];
+        
+        // Skip if ID is 0 or empty (invalid values)
+        const isValidId = tool.id_column_type === 'integer' 
+          ? (typeof idValue === 'number' && idValue > 0) || (typeof idValue === 'string' && parseInt(idValue) > 0)
+          : (typeof idValue === 'string' && idValue.trim() !== '');
+        
+        if (isValidId) {
+          // Apply ID filter based on type
+          if (tool.id_column_type === 'integer') {
+            const numericId = parseInt(String(idValue), 10);
+            if (isNaN(numericId)) {
+              return {
+                success: false,
+                error: `Invalid ${tool.id_column} format - expected integer`
+              };
+            }
+            query = query.eq(tool.id_column, numericId);
+          } else {
+            query = query.eq(tool.id_column, String(idValue));
+          }
+        }
+      }
+
+      // Execute query - use .single() if ID provided, otherwise return array
+      const hasIdFilter = tool.id_column && parameters[tool.id_column] !== undefined;
+      const { data, error } = hasIdFilter ? await query.single() : await query;
+
+      if (error) {
+        // If single() fails, try returning as array (might be multiple results)
+        if (error.code === 'PGRST116') {
+          return {
+            success: false,
+            error: 'No data found'
+          };
+        }
+        
+        logger.error(`Database query error for ${tool.table_name}:`, error);
+        return {
+          success: false,
+          error: `Query failed: ${error.message}`
         };
       }
 
       if (!data) {
         return {
           success: false,
-          error: 'User not found'
+          error: 'No data found'
         };
       }
 
-      logger.info(`✅ Successfully fetched user details for ${userId}`);
+      logger.info(`✅ Successfully executed tool ${tool.tool_name}`);
 
       return {
         success: true,
-        user: data
+        data
       };
     } catch (error: any) {
-      logger.error('Error in getUserDetails:', error);
+      logger.error(`Error in executeToolQuery for ${tool.table_name}:`, error);
       return {
         success: false,
         error: error.message || 'Unknown error occurred'

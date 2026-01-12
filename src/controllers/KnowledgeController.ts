@@ -105,7 +105,7 @@ export class KnowledgeController {
 
   async getItem(req: Request, res: Response): Promise<void> {
     try {
-      const { uuid } = req.params;
+      const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
       const item = await this.knowledgeBase.getItem(uuid);
 
       if (!item) {
@@ -189,7 +189,7 @@ export class KnowledgeController {
 
   async updateItem(req: Request, res: Response): Promise<void> {
     try {
-      const { uuid } = req.params;
+      const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
       const { 
         title, 
         description, 
@@ -228,7 +228,7 @@ export class KnowledgeController {
 
   async deleteItem(req: Request, res: Response): Promise<void> {
     try {
-      const { uuid } = req.params;
+      const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
       const success = await this.knowledgeBase.deleteItem(uuid);
 
       if (!success) {
@@ -354,7 +354,7 @@ export class KnowledgeController {
    */
   async getCitationContext(req: Request, res: Response): Promise<void> {
     try {
-      const { uuid } = req.params;
+      const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
       const chunkIndicesParam = req.query.chunk_indices as string;
 
       if (!chunkIndicesParam) {
