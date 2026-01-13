@@ -1,3 +1,10 @@
+## [2.11.1] - 2026-01-13
+
+### Fixed
+- Database tools migration now uses `bigIncrements` (BIGINT/int8) for ID columns, consistent with other tables
+- Added separate `uuid` column for external API exposure (integer `id` used only for internal foreign keys)
+- Removed unused `EXTERNAL_DB_ENABLED` environment variable (database tools always available)
+
 ## [2.11.0] - 2026-01-12
 
 ### Added

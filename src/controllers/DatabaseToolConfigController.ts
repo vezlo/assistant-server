@@ -67,7 +67,7 @@ export class DatabaseToolConfigController {
       res.status(201).json({
         success: true,
         config: {
-          id: config.id,
+          uuid: config.uuid,
           company_id: config.company_id,
           enabled: config.enabled,
           created_at: config.created_at
@@ -111,7 +111,7 @@ export class DatabaseToolConfigController {
       res.json({
         success: true,
         config: {
-          id: config.id,
+          uuid: config.uuid,
           company_id: config.company_id,
           enabled: config.enabled,
           created_at: config.created_at,
@@ -145,9 +145,9 @@ export class DatabaseToolConfigController {
         return;
       }
 
-      // Verify ownership
+      // Verify ownership (configId from API is UUID)
       const existing = await this.service.getConfigByCompany(companyId);
-      if (!existing || existing.id !== configId) {
+      if (!existing || existing.uuid !== configId) {
         res.status(403).json({
           success: false,
           error: 'Configuration not found or access denied'
@@ -199,9 +199,9 @@ export class DatabaseToolConfigController {
         return;
       }
 
-      // Verify ownership
+      // Verify ownership (configId from API is UUID)
       const existing = await this.service.getConfigByCompany(companyId);
-      if (!existing || existing.id !== configId) {
+      if (!existing || existing.uuid !== configId) {
         res.status(403).json({
           success: false,
           error: 'Configuration not found or access denied'
@@ -449,9 +449,9 @@ export class DatabaseToolConfigController {
         return;
       }
 
-      // Verify ownership of config
+      // Verify ownership of config (config_id from API is UUID)
       const config = await this.service.getConfigByCompany(companyId);
-      if (!config || config.id !== config_id) {
+      if (!config || config.uuid !== config_id) {
         res.status(403).json({
           success: false,
           error: 'Configuration not found or access denied'
@@ -460,7 +460,7 @@ export class DatabaseToolConfigController {
       }
 
       const tool = await this.service.createTool(
-        config_id,
+        config_id, // This is UUID from API
         table_name,
         tool_name,
         tool_description || `Get data from ${table_name}`,
@@ -473,9 +473,24 @@ export class DatabaseToolConfigController {
         user_context_key
       );
 
+      // Return only public fields (UUID, not internal ID)
       res.status(201).json({
         success: true,
-        tool
+        tool: {
+          uuid: tool.uuid,
+          table_name: tool.table_name,
+          tool_name: tool.tool_name,
+          tool_description: tool.tool_description,
+          columns: tool.columns,
+          id_column: tool.id_column,
+          id_column_type: tool.id_column_type,
+          enabled: tool.enabled,
+          requires_user_context: tool.requires_user_context,
+          user_filter_column: tool.user_filter_column,
+          user_filter_type: tool.user_filter_type,
+          user_context_key: tool.user_context_key,
+          created_at: tool.created_at
+        }
       });
     } catch (error) {
       logger.error('Create tool error:', error);
@@ -504,9 +519,27 @@ export class DatabaseToolConfigController {
 
       const tools = await this.service.getEnabledToolsByCompany(companyId);
 
+      // Map to expose only UUID, not internal ID
+      const publicTools = tools.map(tool => ({
+        uuid: tool.uuid,
+        table_name: tool.table_name,
+        tool_name: tool.tool_name,
+        tool_description: tool.tool_description,
+        columns: tool.columns,
+        id_column: tool.id_column,
+        id_column_type: tool.id_column_type,
+        enabled: tool.enabled,
+        requires_user_context: tool.requires_user_context,
+        user_filter_column: tool.user_filter_column,
+        user_filter_type: tool.user_filter_type,
+        user_context_key: tool.user_context_key,
+        created_at: tool.created_at,
+        updated_at: tool.updated_at
+      }));
+
       res.json({
         success: true,
-        tools
+        tools: publicTools
       });
     } catch (error) {
       logger.error('Get tools error:', error);
@@ -547,9 +580,25 @@ export class DatabaseToolConfigController {
 
       const tool = await this.service.updateTool(toolId, updates);
 
+      // Return only public fields (UUID, not internal ID)
       res.json({
         success: true,
-        tool
+        tool: {
+          uuid: tool.uuid,
+          table_name: tool.table_name,
+          tool_name: tool.tool_name,
+          tool_description: tool.tool_description,
+          columns: tool.columns,
+          id_column: tool.id_column,
+          id_column_type: tool.id_column_type,
+          enabled: tool.enabled,
+          requires_user_context: tool.requires_user_context,
+          user_filter_column: tool.user_filter_column,
+          user_filter_type: tool.user_filter_type,
+          user_context_key: tool.user_context_key,
+          created_at: tool.created_at,
+          updated_at: tool.updated_at
+        }
       });
     } catch (error) {
       logger.error('Update tool error:', error);

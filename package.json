@@ -1,6 +1,6 @@
 {
   "name": "@vezlo/assistant-server",
-  "version": "2.11.0",
+  "version": "2.11.1",
   "description": "Production-ready AI Assistant Server with advanced RAG (chunk-based semantic search + adjacent retrieval), conversation management, real-time communication, and human agent handoff",
   "main": "dist/src/server.js",
   "types": "dist/src/server.d.ts",
