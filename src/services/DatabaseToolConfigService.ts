@@ -54,14 +54,14 @@ export class DatabaseToolConfigService {
   constructor(supabase: SupabaseClient) {
     this.supabase = supabase;
     
-    // Use JWT_SECRET or dedicated encryption key
-    const key = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET || 'default-encryption-key-change-this';
+    // Use JWT_SECRET for encryption
+    const key = process.env.JWT_SECRET || 'default-encryption-key-change-this';
     
     // Ensure key is 32 bytes for aes-256-cbc
     this.encryptionKey = crypto.createHash('sha256').update(key).digest('hex').substring(0, 32);
     
-    if (!process.env.ENCRYPTION_KEY && !process.env.JWT_SECRET) {
-      logger.warn('⚠️  No ENCRYPTION_KEY or JWT_SECRET found - using default (insecure for production)');
+    if (!process.env.JWT_SECRET) {
+      logger.warn('⚠️  No JWT_SECRET found - using default (insecure for production)');
     }
   }
 
