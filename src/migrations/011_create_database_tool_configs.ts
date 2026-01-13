@@ -3,22 +3,24 @@ import { Knex } from 'knex';
 export async function up(knex: Knex): Promise<void> {
   // Table for storing external database configurations
   await knex.schema.createTable('vezlo_database_tool_configs', (table) => {
-    table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
-    table.integer('company_id').notNullable().references('id').inTable('vezlo_companies').onDelete('CASCADE');
+    table.bigIncrements('id').primary();
+    table.uuid('uuid').defaultTo(knex.raw('gen_random_uuid()')).unique().notNullable();
+    table.bigInteger('company_id').notNullable().references('id').inTable('vezlo_companies').onDelete('CASCADE');
     table.text('db_url_encrypted').notNullable(); // Encrypted database URL
     table.text('db_key_encrypted').notNullable(); // Encrypted database key
     table.boolean('enabled').defaultTo(true);
-    table.timestamp('created_at').defaultTo(knex.fn.now());
-    table.timestamp('updated_at').defaultTo(knex.fn.now());
+    table.timestamps(true, true); // created_at, updated_at with timezone
     
-    // Index for quick lookups by company
+    // Index for quick lookups by company and uuid
     table.index('company_id');
+    table.index('uuid');
   });
 
   // Table for storing individual tool configurations per table
   await knex.schema.createTable('vezlo_database_tools', (table) => {
-    table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
-    table.uuid('config_id').notNullable().references('id').inTable('vezlo_database_tool_configs').onDelete('CASCADE');
+    table.bigIncrements('id').primary();
+    table.uuid('uuid').defaultTo(knex.raw('gen_random_uuid()')).unique().notNullable();
+    table.bigInteger('config_id').notNullable().references('id').inTable('vezlo_database_tool_configs').onDelete('CASCADE');
     table.text('table_name').notNullable(); // Database table name
     table.text('tool_name').notNullable(); // Generated tool name (e.g., 'get_user_details')
     table.text('tool_description'); // Description for LLM
@@ -33,11 +35,11 @@ export async function up(knex: Knex): Promise<void> {
     table.text('user_filter_type').nullable(); // 'uuid', 'integer', 'string'
     table.text('user_context_key').nullable(); // Key from user_context (e.g., 'user_uuid', 'company_id')
     
-    table.timestamp('created_at').defaultTo(knex.fn.now());
-    table.timestamp('updated_at').defaultTo(knex.fn.now());
+    table.timestamps(true, true); // created_at, updated_at with timezone
     
     // Index for quick lookups
     table.index('config_id');
+    table.index('uuid');
     table.index('enabled');
     
     // Unique constraint: one tool per table per config

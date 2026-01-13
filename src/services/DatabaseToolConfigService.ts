@@ -10,7 +10,8 @@ import crypto from 'crypto';
 import logger from '../config/logger';
 
 export interface DatabaseToolConfig {
-  id?: string;
+  id?: number;
+  uuid?: string;
   company_id: number;
   db_url_encrypted: string;
   db_key_encrypted: string;
@@ -20,8 +21,9 @@ export interface DatabaseToolConfig {
 }
 
 export interface DatabaseTool {
-  id?: string;
-  config_id: string;
+  id?: number;
+  uuid?: string;
+  config_id: number;
   table_name: string;
   tool_name: string;
   tool_description: string;
@@ -156,17 +158,17 @@ export class DatabaseToolConfigService {
   }
 
   /**
-   * Get decrypted credentials by config ID
+   * Get decrypted credentials by config UUID
    */
-  async getDecryptedCredentialsByConfigId(configId: string): Promise<{ url: string; key: string } | null> {
+  async getDecryptedCredentialsByConfigId(configUuid: string): Promise<{ url: string; key: string } | null> {
     const { data: config, error } = await this.supabase
       .from('vezlo_database_tool_configs')
       .select('*')
-      .eq('id', configId)
+      .eq('uuid', configUuid)
       .single();
 
     if (error || !config) {
-      logger.error('Failed to get config by ID:', error);
+      logger.error('Failed to get config by UUID:', error);
       return null;
     }
 
@@ -181,9 +183,9 @@ export class DatabaseToolConfigService {
   }
 
   /**
-   * Update configuration
+   * Update configuration by UUID
    */
-  async updateConfig(configId: string, dbUrl?: string, dbKey?: string, enabled?: boolean): Promise<DatabaseToolConfig> {
+  async updateConfig(configUuid: string, dbUrl?: string, dbKey?: string, enabled?: boolean): Promise<DatabaseToolConfig> {
     const updates: any = {};
 
     if (dbUrl) {
@@ -201,7 +203,7 @@ export class DatabaseToolConfigService {
     const { data, error } = await this.supabase
       .from('vezlo_database_tool_configs')
       .update(updates)
-      .eq('id', configId)
+      .eq('uuid', configUuid)
       .select()
       .single();
 
@@ -210,25 +212,25 @@ export class DatabaseToolConfigService {
       throw new Error(`Failed to update config: ${error.message}`);
     }
 
-    logger.info(`✅ Updated database tool config ${configId}`);
+    logger.info(`✅ Updated database tool config ${configUuid}`);
     return data;
   }
 
   /**
-   * Delete configuration
+   * Delete configuration by UUID
    */
-  async deleteConfig(configId: string): Promise<void> {
+  async deleteConfig(configUuid: string): Promise<void> {
     const { error } = await this.supabase
       .from('vezlo_database_tool_configs')
       .delete()
-      .eq('id', configId);
+      .eq('uuid', configUuid);
 
     if (error) {
       logger.error('Failed to delete database tool config:', error);
       throw new Error(`Failed to delete config: ${error.message}`);
     }
 
-    logger.info(`✅ Deleted database tool config ${configId}`);
+    logger.info(`✅ Deleted database tool config ${configUuid}`);
   }
 
   /**
@@ -395,10 +397,10 @@ export class DatabaseToolConfigService {
   }
 
   /**
-   * Create a tool for a specific table
+   * Create a tool for a specific table (configUuid from API, get internal id)
    */
   async createTool(
-    configId: string,
+    configUuid: string,
     tableName: string,
     toolName: string,
     toolDescription: string,
@@ -410,6 +412,17 @@ export class DatabaseToolConfigService {
     userFilterType?: 'uuid' | 'integer' | 'string',
     userContextKey?: string
   ): Promise<DatabaseTool> {
+    // Get internal config ID from UUID
+    const { data: config } = await this.supabase
+      .from('vezlo_database_tool_configs')
+      .select('id')
+      .eq('uuid', configUuid)
+      .single();
+
+    if (!config) {
+      throw new Error('Config not found');
+    }
+
     // Ensure columns is an array before stringifying
     const columnsArray = Array.isArray(columns) ? columns : 
                         (typeof columns === 'string' ? JSON.parse(columns) : columns);
@@ -417,7 +430,7 @@ export class DatabaseToolConfigService {
     const { data, error } = await this.supabase
       .from('vezlo_database_tools')
       .insert({
-        config_id: configId,
+        config_id: config.id,
         table_name: tableName,
         tool_name: toolName,
         tool_description: toolDescription,
@@ -448,9 +461,9 @@ export class DatabaseToolConfigService {
   }
 
   /**
-   * Get all tools for a configuration
+   * Get all tools for a configuration (by config internal ID)
    */
-  async getToolsByConfig(configId: string): Promise<DatabaseTool[]> {
+  async getToolsByConfigId(configId: number): Promise<DatabaseTool[]> {
     const { data, error } = await this.supabase
       .from('vezlo_database_tools')
       .select('*')
@@ -493,10 +506,10 @@ export class DatabaseToolConfigService {
   }
 
   /**
-   * Update a tool
+   * Update a tool by UUID
    */
   async updateTool(
-    toolId: string,
+    toolUuid: string,
     updates: {
       tool_name?: string;
       tool_description?: string;
@@ -522,7 +535,7 @@ export class DatabaseToolConfigService {
     const { data, error } = await this.supabase
       .from('vezlo_database_tools')
       .update(updateData)
-      .eq('id', toolId)
+      .eq('uuid', toolUuid)
       .select()
       .single();
 
@@ -531,7 +544,7 @@ export class DatabaseToolConfigService {
       throw new Error(`Failed to update tool: ${error.message}`);
     }
 
-    logger.info(`✅ Updated tool ${toolId}`);
+    logger.info(`✅ Updated tool ${toolUuid}`);
     
     // Parse columns before returning
     return {
@@ -541,20 +554,20 @@ export class DatabaseToolConfigService {
   }
 
   /**
-   * Delete a tool
+   * Delete a tool by UUID
    */
-  async deleteTool(toolId: string): Promise<void> {
+  async deleteTool(toolUuid: string): Promise<void> {
     const { error } = await this.supabase
       .from('vezlo_database_tools')
       .delete()
-      .eq('id', toolId);
+      .eq('uuid', toolUuid);
 
     if (error) {
       logger.error('Failed to delete database tool:', error);
       throw new Error(`Failed to delete tool: ${error.message}`);
     }
 
-    logger.info(`✅ Deleted tool ${toolId}`);
+    logger.info(`✅ Deleted tool ${toolUuid}`);
   }
 }
 

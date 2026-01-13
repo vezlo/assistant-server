@@ -628,21 +628,24 @@ $$;
 
 -- External database configurations
 CREATE TABLE IF NOT EXISTS vezlo_database_tool_configs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id BIGSERIAL PRIMARY KEY,
+  uuid UUID DEFAULT gen_random_uuid() UNIQUE NOT NULL,
   company_id BIGINT NOT NULL REFERENCES vezlo_companies(id) ON DELETE CASCADE,
   db_url_encrypted TEXT NOT NULL,
   db_key_encrypted TEXT NOT NULL,
   enabled BOOLEAN DEFAULT true,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_database_tool_configs_company_id ON vezlo_database_tool_configs(company_id);
+CREATE INDEX IF NOT EXISTS idx_database_tool_configs_uuid ON vezlo_database_tool_configs(uuid);
 
 -- Individual tool configurations
 CREATE TABLE IF NOT EXISTS vezlo_database_tools (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  config_id UUID NOT NULL REFERENCES vezlo_database_tool_configs(id) ON DELETE CASCADE,
+  id BIGSERIAL PRIMARY KEY,
+  uuid UUID DEFAULT gen_random_uuid() UNIQUE NOT NULL,
+  config_id BIGINT NOT NULL REFERENCES vezlo_database_tool_configs(id) ON DELETE CASCADE,
   table_name TEXT NOT NULL,
   tool_name TEXT NOT NULL,
   tool_description TEXT,
@@ -654,10 +657,11 @@ CREATE TABLE IF NOT EXISTS vezlo_database_tools (
   user_filter_column TEXT,
   user_filter_type TEXT,
   user_context_key TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
   UNIQUE(config_id, table_name)
 );
 
 CREATE INDEX IF NOT EXISTS idx_database_tools_config_id ON vezlo_database_tools(config_id);
+CREATE INDEX IF NOT EXISTS idx_database_tools_uuid ON vezlo_database_tools(uuid);
 CREATE INDEX IF NOT EXISTS idx_database_tools_enabled ON vezlo_database_tools(enabled);
