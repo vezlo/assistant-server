@@ -177,6 +177,9 @@ curl "http://localhost:3000/api/migrate?key=$MIGRATION_SECRET_KEY"
 # Create default admin user and company (if not exists)
 npm run seed-default
 
+# Seed AI settings for existing companies (optional, auto-created for new companies)
+npm run seed-ai-settings
+
 # Generate API key for library integration
 npm run generate-key
 ```
@@ -349,6 +352,13 @@ Creates default admin user and company.
 
 ```bash
 vezlo-seed-default
+```
+
+### vezlo-seed-ai-settings
+Seeds or updates AI settings for all existing companies with default values.
+
+```bash
+vezlo-seed-ai-settings
 ```
 
 ### vezlo-generate-key
@@ -738,4 +748,4 @@ This project is dual-licensed:
 
 ---
 
-**Status**: ✅ Production Ready | **Version**: 2.11.1 | **Node.js**: 20+ | **TypeScript**: 5+
+**Status**: ✅ Production Ready | **Version**: 2.12.0 | **Node.js**: 20+ | **TypeScript**: 5+

@@ -1,3 +1,23 @@
+## [2.12.0] - 2026-01-13
+
+### Added
+- **AI Settings**: Customizable AI behavior per company (personality, response guidelines, interaction etiquette, scope of assistance, formatting)
+- Per-company AI model selection (GPT-4o Mini, GPT-4o, GPT-4 Turbo, GPT-3.5 Turbo)
+- Configurable temperature (0-1) and max_tokens per company
+- JSONB-based settings storage for future extensibility
+- Default AI settings seeded automatically on company creation
+- `vezlo-seed-ai-settings` command to seed/update AI settings for existing companies
+- 2 new AI settings API endpoints: GET/PUT `/api/companies/:companyUuid/ai-settings`
+- All system prompts converted to Markdown format for better LLM understanding
+- Centralized `PromptService` for all LLM prompt management
+
+### Changed
+- AI settings (model, temperature, max_tokens, prompts) now loaded from database per company
+- Environment variables act as fallbacks when AI settings not configured
+- Intent classification now includes all 5 user-defined AI settings prompts
+- Custom AI personality completely overrides default assistant introduction
+
+
 ## [2.11.1] - 2026-01-13
 
 ### Fixed

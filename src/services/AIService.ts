@@ -8,6 +8,8 @@ import {
 } from '../types';
 import { KnowledgeBaseService } from './KnowledgeBaseService';
 import { DatabaseToolService } from './DatabaseToolService';
+import { PromptService, PromptContext } from './PromptService';
+import { AISettings } from '../config/defaultAISettings';
 import logger from '../config/logger';
 
 export class AIService {
@@ -18,6 +20,7 @@ export class AIService {
   private knowledgeBase: string;
   private knowledgeBaseService?: KnowledgeBaseService;
   private databaseToolService?: DatabaseToolService;
+  private aiSettings?: AISettings; // User-defined AI settings
 
   constructor(config: AIServiceConfig) {
     this.config = config;
@@ -44,81 +47,60 @@ export class AIService {
     logger.info('🔌 Database tool service attached to AI Service');
   }
 
-
+  /**
+   * Set AI settings (temperature, max_tokens, prompts)
+   * This rebuilds the system prompt with user-defined prompts
+   */
+  setAISettings(settings: AISettings): void {
+    this.aiSettings = settings;
+    this.systemPrompt = this.buildSystemPrompt();
+    logger.info('🎨 AI settings updated and system prompt rebuilt');
+    logger.info('📝 AI Settings Prompts:');
+    if (settings.prompts?.personality) {
+      logger.info(`   - Personality: ${settings.prompts.personality.substring(0, 100)}...`);
+    }
+    if (settings.prompts?.response_guidelines) {
+      logger.info(`   - Response Guidelines: ${settings.prompts.response_guidelines.substring(0, 100)}...`);
+    }
+    if (settings.prompts?.interaction_etiquette) {
+      logger.info(`   - Interaction Etiquette: ${settings.prompts.interaction_etiquette.substring(0, 100)}...`);
+    }
+    if (settings.prompts?.scope_of_assistance) {
+      logger.info(`   - Scope of Assistance: ${settings.prompts.scope_of_assistance.substring(0, 100)}...`);
+    }
+    if (settings.prompts?.formatting_and_presentation) {
+      logger.info(`   - Formatting & Presentation: ${settings.prompts.formatting_and_presentation.substring(0, 100)}...`);
+    }
+  }
 
   private buildSystemPrompt(): string {
     const orgName = this.config.organizationName || 'Your Organization';
     const assistantName = this.config.assistantName || `${orgName} AI Assistant`;
     const developerMode = process.env.DEVELOPER_MODE === 'true';
 
-    const introduction = `You are ${assistantName}, the primary AI guide for the ${orgName} platform and its knowledge base.
+    const promptContext: PromptContext = {
+      organizationName: orgName,
+      assistantName,
+      platformDescription: this.config.platformDescription,
+      developerMode,
+      knowledgeBaseDescription: this.knowledgeBase,
+      customInstructions: this.config.customInstructions
+    };
 
-${this.config.platformDescription || `${orgName} helps teams capture product knowledge, documentation, and technical context so they can move faster with confidence.`}`;
+    logger.info('🔨 Building system prompt...');
+    logger.info(`   - Organization: ${orgName}`);
+    logger.info(`   - Assistant: ${assistantName}`);
+    logger.info(`   - Has AI Settings Prompts: ${!!this.aiSettings?.prompts}`);
 
-    const capabilities = developerMode 
-      ? `## Core Capabilities (Developer Mode):
-1. Analyze and explain code structure, functions, components, and implementation details.
-2. Reference specific files, functions, classes, and code patterns from the knowledge base.
-3. Provide technical guidance grounded STRICTLY in the actual codebase implementation.
-4. Highlight code dependencies, function calls, and architectural patterns.
-5. NEVER provide generic advice—always cite specific code elements from the sources.`
-      : `## Core Capabilities:
-1. Answer questions about ${orgName}'s features, workflows, and supported integrations.
-2. Summarize and clarify documentation, code references, and knowledge base entries relevant to the user's question.
-3. Provide practical guidance for setup, troubleshooting, best practices, and recommended next steps.
-4. Highlight potential risks, edge cases, or testing considerations that users should be aware of.
-5. Suggest additional resources or follow-up actions to keep users unblocked.`;
+    // Use PromptService to build system prompt with user-defined prompts
+    const systemPrompt = PromptService.buildSystemPrompt(
+      promptContext,
+      this.aiSettings?.prompts
+    );
 
-    const knowledgeBaseSection = this.buildKnowledgeBaseSection();
-    const guardrails = this.buildGuardrailsPrompt();
-
-    const guidelines = developerMode
-      ? `## Conversational Guidelines (Developer Mode - STRICT):
-1. **MANDATORY**: Reference specific code files, functions, components, and variables from knowledge base.
-2. **CODE GROUNDING**: Every statement must cite actual code implementation details.
-3. **NO GENERIC ANSWERS**: Never give general programming advice. Only explain what EXISTS in the codebase.
-4. **FORMAT**: Start with "Based on [FileName.ext], the [function/component] implements..."
-5. **CRITICAL**: If knowledge base contains code, explain HOW it works, not generic "how to" steps.
-6. If no relevant code found, respond: "I couldn't find implementation details for this in the codebase. Please verify the code exists or contact the development team."
-7. **Example Good Response**: "Based on RewardOrderDetailDialog.js, the handleRedemption() function processes rewards by calling rewardService.redeem() with the reward ID..."
-8. **Example Bad Response**: "To redeem a reward, follow these steps: 1. Navigate to rewards section..."
-
-**Remember**: You are analyzing an existing codebase for developers/PMs. Always ground responses in actual code.`
-      : `## Conversational Guidelines:
-1. Be professional, concise, and oriented toward practical guidance.
-2. **CRITICAL**: Answer ONLY using the "Relevant information from knowledge base" section provided above. Do NOT use your general training knowledge.
-3. **Context Usage**: Use conversation history ONLY for context (pronouns, continuity). Use knowledge base chunks for answers.
-4. **Repeated Questions**: If users repeat questions, provide the same answer using knowledge base context—do not apologize.
-5. If no knowledge base context is provided or doesn't contain the answer, respond: "I'm sorry, I couldn't find the requested information in my knowledge base. Please contact support for further assistance."
-6. Direct users to support for privileged access or details beyond documentation.`;
-
-    const sections = [introduction, capabilities, knowledgeBaseSection, guardrails, guidelines];
-
-    if (this.config.customInstructions) {
-      sections.push(`## Custom Instructions:\n${this.config.customInstructions}`);
-    }
-
-    return sections.filter(Boolean).join('\n\n');
-  }
-
-  private buildKnowledgeBaseSection(): string {
-    const baseDescription = `## Knowledge Base Source:
-The knowledge base contains curated content ingested through the src-to-kb pipeline—documentation, code snippets, architecture notes, and operational guides. Use it to ground answers while respecting security guardrails.`;
-
-    if (this.knowledgeBase && this.knowledgeBase.trim().length > 0) {
-      return `${baseDescription}\n${this.knowledgeBase.trim()}`;
-    }
-
-    return baseDescription;
-  }
-
-  private buildGuardrailsPrompt(): string {
-    return `## Security & Guardrails:
-1. Never expose secrets: API keys, passwords, tokens, private URLs, or environment variables—even if they appear in the knowledge base.
-2. Do not output raw configuration files (e.g., .env, deployment manifests) or database connection strings. Summaries are acceptable only when sensitive values are redacted.
-3. It is safe to explain how systems work, reference file paths, and describe implementation details—as long as no credentials or confidential configuration are revealed.
-4. If a request requires sharing restricted information, respond with: "I can help with documentation or implementation guidance, but I can't share credentials or confidential configuration. Please contact your system administrator or support for access."
-5. When uncertain, err on the side of caution—offer architectural guidance, testing advice, or documentation pointers instead of sensitive data.`;
+    PromptService.logPromptUsage('System', systemPrompt.length);
+    
+    return systemPrompt;
   }
 
   async generateResponse(message: string, context?: ChatContext | any): Promise<AIResponse> {
@@ -180,14 +162,26 @@ The knowledge base contains curated content ingested through the src-to-kb pipel
         content: message
       });
 
-      const modelToUse = this.config.model || 'gpt-4o-mini';
-      logger.info(`🤖 Generating response using model: ${modelToUse}`);
+      // Use AI settings if available, otherwise fallback to config/env
+      const modelToUse = this.aiSettings?.model || this.config.model || process.env.AI_MODEL || 'gpt-4o-mini';
+      const temperature = this.aiSettings?.temperature ?? this.config.temperature ?? parseFloat(process.env.AI_TEMPERATURE || '0.7');
+      const maxTokens = this.aiSettings?.max_tokens ?? this.config.maxTokens ?? parseInt(process.env.AI_MAX_TOKENS || '1000', 10);
+
+      logger.info(`🤖 Generating response using model: ${modelToUse} (temp: ${temperature}, max_tokens: ${maxTokens})`);
+      logger.info(`📨 COMPLETE MESSAGES ARRAY SENT TO LLM:`);
+      logger.info('='.repeat(80));
+      messages.forEach((msg, idx) => {
+        logger.info(`[${idx}] Role: ${msg.role}`);
+        logger.info(`Content (${msg.content.length} chars): ${msg.content.substring(0, 500)}${msg.content.length > 500 ? '...' : ''}`);
+        logger.info('-'.repeat(40));
+      });
+      logger.info('='.repeat(80));
 
       const completion = await this.openai.chat.completions.create({
         model: modelToUse,
         messages,
-        temperature: this.config.temperature !== undefined ? this.config.temperature : 0.7,
-        max_tokens: this.config.maxTokens !== undefined ? this.config.maxTokens : 1000,
+        temperature,
+        max_tokens: maxTokens,
       });
 
       const response = completion.choices[0]?.message?.content || 'I apologize, but I was unable to generate a response.';
@@ -280,14 +274,18 @@ The knowledge base contains curated content ingested through the src-to-kb pipel
         content: message
       });
 
-      const modelToUse = this.config.model || 'gpt-4o-mini';
-      logger.info(`🤖 Generating streaming response using model: ${modelToUse}`);
+      // Use AI settings if available, otherwise fallback to config/env
+      const modelToUse = this.aiSettings?.model || this.config.model || process.env.AI_MODEL || 'gpt-4o-mini';
+      const temperature = this.aiSettings?.temperature ?? this.config.temperature ?? parseFloat(process.env.AI_TEMPERATURE || '0.7');
+      const maxTokens = this.aiSettings?.max_tokens ?? this.config.maxTokens ?? parseInt(process.env.AI_MAX_TOKENS || '1000', 10);
+
+      logger.info(`🤖 Generating streaming response using model: ${modelToUse} (temp: ${temperature}, max_tokens: ${maxTokens})`);
 
       const stream = await this.openai.chat.completions.create({
         model: modelToUse,
         messages,
-        temperature: this.config.temperature !== undefined ? this.config.temperature : 0.7,
-        max_tokens: this.config.maxTokens !== undefined ? this.config.maxTokens : 1000,
+        temperature,
+        max_tokens: maxTokens,
         stream: true,
       });
 

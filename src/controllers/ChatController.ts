@@ -11,6 +11,7 @@ import { ResponseGenerationService } from '../services/ResponseGenerationService
 import { ResponseStreamingService } from '../services/ResponseStreamingService';
 import { ValidationService } from '../services/ValidationService';
 import { DatabaseToolService } from '../services/DatabaseToolService';
+import { AISettingsService } from '../services/AISettingsService';
 
 export class ChatController {
   private chatManager: ChatManager;
@@ -23,12 +24,13 @@ export class ChatController {
   private responseStreamingService: ResponseStreamingService;
   private validationService?: ValidationService;
   private databaseToolService?: DatabaseToolService;
+  private aiSettingsService?: AISettingsService;
 
   constructor(
     chatManager: ChatManager,
     storage: UnifiedStorage,
     supabase: SupabaseClient,
-    options: { historyLength?: number; intentService?: IntentService; realtimePublisher?: RealtimePublisher; validationService?: ValidationService; databaseToolService?: DatabaseToolService } = {}
+    options: { historyLength?: number; intentService?: IntentService; realtimePublisher?: RealtimePublisher; validationService?: ValidationService; databaseToolService?: DatabaseToolService; aiSettingsService?: AISettingsService } = {}
   ) {
     this.chatManager = chatManager;
     this.storage = storage;
@@ -39,6 +41,7 @@ export class ChatController {
     this.realtimePublisher = options.realtimePublisher;
     this.validationService = options.validationService;
     this.databaseToolService = options.databaseToolService;
+    this.aiSettingsService = options.aiSettingsService;
     
     // Initialize services
     const aiService = (chatManager as any).aiService;
@@ -327,8 +330,61 @@ export class ChatController {
       // Set up Server-Sent Events (SSE) headers for streaming
       this.responseStreamingService.setupSSEHeaders(res);
 
-      // Run intent classification to decide handling strategy (with dynamic tools)
+      // Load and apply AI settings for this company before generating response
       const companyId = conversation?.organizationId ? parseInt(String(conversation.organizationId), 10) : undefined;
+      
+      // Try to get company UUID from profile or fetch from database using companyId
+      let companyUuid = req.profile?.companyUuid;
+      
+      if (!companyUuid && companyId && this.aiSettingsService) {
+        // Fallback: fetch company UUID from database using companyId
+        try {
+          const { data: company } = await this.supabase
+            .from('vezlo_companies')
+            .select('uuid')
+            .eq('id', companyId)
+            .single();
+          
+          if (company) {
+            companyUuid = company.uuid;
+            logger.info(`🔍 Fetched company UUID from database: ${companyUuid}`);
+          }
+        } catch (error) {
+          logger.warn('⚠️ Failed to fetch company UUID from database:', error);
+        }
+      }
+      
+      if (this.aiSettingsService && companyUuid) {
+        try {
+          logger.info(`🔍 Loading AI settings for company: ${companyUuid}`);
+          const aiSettings = await this.aiSettingsService.getSettingsByCompanyUuid(companyUuid);
+          logger.info(`📦 AI Settings loaded:`, {
+            model: aiSettings.model,
+            temperature: aiSettings.temperature,
+            max_tokens: aiSettings.max_tokens,
+            hasPrompts: !!aiSettings.prompts,
+            promptKeys: aiSettings.prompts ? Object.keys(aiSettings.prompts) : []
+          });
+          const aiService = this.responseGenerationService.getAIService();
+          if (aiService) {
+            (aiService as any).setAISettings(aiSettings);
+            logger.info(`✅ AI settings applied to AIService for company: ${companyUuid}`);
+          } else {
+            logger.warn('⚠️ AIService not available in ResponseGenerationService');
+          }
+          
+          // Also set ALL AI settings prompts in ResponseGenerationService for intent classification
+          if (aiSettings.prompts) {
+            this.responseGenerationService.setAISettingsPrompts(aiSettings.prompts);
+          }
+        } catch (error) {
+          logger.warn('⚠️ Failed to load AI settings, using defaults:', error);
+        }
+      } else {
+        logger.warn(`⚠️ Cannot load AI settings: aiSettingsService=${!!this.aiSettingsService}, companyUuid=${companyUuid}, companyId=${companyId}`);
+      }
+
+      // Run intent classification to decide handling strategy (with dynamic tools)
       const intentResult = await this.responseGenerationService.classifyIntent(userMessageContent, messages, companyId);
       const intentResponse = this.responseGenerationService.handleIntentResult(intentResult, userMessageContent);
 
@@ -375,9 +431,14 @@ export class ChatController {
                 throw new Error('AI service not available');
               }
               
+              // Get AI settings from the AI service (model, temperature)
+              const aiSettings = (aiService as any).aiSettings;
+              const modelToUse = aiSettings?.model || process.env.AI_MODEL || 'gpt-4o-mini';
+              const temperature = aiSettings?.temperature ?? parseFloat(process.env.AI_TEMPERATURE || '0.7');
+              const maxTokens = parseInt(process.env.AI_MAX_TOKENS || '500', 10);
+              
               // Direct OpenAI call bypassing the restrictive system prompt
               const openai = (aiService as any).openai;
-              const modelToUse = process.env.AI_MODEL || 'gpt-4o-mini';
               
               const completion = await openai.chat.completions.create({
                 model: modelToUse,
@@ -396,8 +457,8 @@ ${JSON.stringify(toolResult.data || toolResult, null, 2)}
 Provide a natural, friendly response to the user's question using this data.`
                   }
                 ],
-                temperature: 0.7,
-                max_tokens: 500
+                temperature,
+                max_tokens: maxTokens
               });
               
               const formattedContent = completion.choices[0]?.message?.content || 'Here is your information.';

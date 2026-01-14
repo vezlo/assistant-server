@@ -92,6 +92,7 @@ let apiKeyController: ApiKeyController;
 let companyController: CompanyController;
 let slackController: SlackController;
 let databaseToolConfigController: any;
+let aiSettingsController: any;
 let supabase: any;
 let realtimePublisher: RealtimePublisher | null = null;
 
@@ -122,6 +123,7 @@ async function initializeServices() {
     companyController = controllers.companyController;
     slackController = controllers.slackController;
     databaseToolConfigController = controllers.databaseToolConfigController;
+    aiSettingsController = controllers.aiSettingsController;
 
     servicesInitialized = true;
     logger.info('All services initialized successfully');
@@ -333,6 +335,10 @@ app.post('/api/database-tools/tools', requireServices, requireAuth, (req, res) =
 app.get('/api/database-tools/tools', requireServices, requireAuth, (req, res) => databaseToolConfigController.getTools(req, res));
 app.put('/api/database-tools/tools/:toolId', requireServices, requireAuth, (req, res) => databaseToolConfigController.updateTool(req, res));
 app.delete('/api/database-tools/tools/:toolId', requireServices, requireAuth, (req, res) => databaseToolConfigController.deleteTool(req, res));
+
+// AI Settings APIs
+app.get('/api/companies/:companyUuid/ai-settings', requireServices, requireAuth, (req, res) => aiSettingsController.getSettings(req, res));
+app.put('/api/companies/:companyUuid/ai-settings', requireServices, requireAuth, (req, res) => aiSettingsController.updateSettings(req, res));
 
 // Conversation APIs (Public - No Authentication Required for Widget)
 app.post('/api/conversations', requireServices, (req, res) => chatController.createConversation(req, res));

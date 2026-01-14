@@ -93,6 +93,7 @@ let apiKeyController: ApiKeyController;
 let companyController: CompanyController;
 let slackController: SlackController;
 let databaseToolConfigController: any;
+let aiSettingsController: any;
 
 async function initializeServices() {
   try {
@@ -112,6 +113,7 @@ async function initializeServices() {
     companyController = controllers.companyController;
     slackController = controllers.slackController;
     databaseToolConfigController = controllers.databaseToolConfigController;
+    aiSettingsController = controllers.aiSettingsController;
 
     logger.info('All services initialized successfully');
   } catch (error) {
@@ -803,6 +805,140 @@ app.get('/api/api-keys/status', authenticateUser(supabase), (req, res) => apiKey
  */
   app.delete('/api/database-tools/tools/:toolId', authenticateUser(supabase), (req, res) => 
     databaseToolConfigController.deleteTool(req, res)
+  );
+
+  // AI Settings API Routes
+  /**
+   * @swagger
+   * /api/companies/{companyUuid}/ai-settings:
+   *   get:
+   *     summary: Get AI settings
+   *     description: Get AI configuration settings for a company (Admin only)
+   *     tags: [AI Settings]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: companyUuid
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Company UUID
+   *     responses:
+   *       200:
+   *         description: AI settings retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 settings:
+   *                   type: object
+   *                   properties:
+   *                     model:
+   *                       type: string
+   *                     temperature:
+   *                       type: number
+   *                     max_tokens:
+   *                       type: number
+   *                     top_k:
+   *                       type: number
+   *                       nullable: true
+   *                     prompts:
+   *                       type: object
+   *                       properties:
+   *                         personality:
+   *                           type: string
+   *                         response_guidelines:
+   *                           type: string
+   *                         interaction_etiquette:
+   *                           type: string
+   *                         scope_of_assistance:
+   *                           type: string
+   *                         formatting_and_presentation:
+   *                           type: string
+   *       403:
+   *         description: Unauthorized access
+   *       401:
+   *         description: Not authenticated
+   */
+  app.get('/api/companies/:companyUuid/ai-settings', authenticateUser(supabase), (req, res) => 
+    aiSettingsController.getSettings(req, res)
+  );
+
+  /**
+   * @swagger
+   * /api/companies/{companyUuid}/ai-settings:
+   *   put:
+   *     summary: Update AI settings
+   *     description: Update AI configuration settings for a company (Admin only)
+   *     tags: [AI Settings]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: companyUuid
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Company UUID
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               model:
+   *                 type: string
+   *                 enum: [gpt-4o-mini, gpt-4o, gpt-4-turbo, gpt-3.5-turbo]
+   *               temperature:
+   *                 type: number
+   *                 minimum: 0
+   *                 maximum: 2
+   *               max_tokens:
+   *                 type: number
+   *                 minimum: 1
+   *                 maximum: 16000
+   *               top_k:
+   *                 type: number
+   *                 nullable: true
+   *               prompts:
+   *                 type: object
+   *                 properties:
+   *                   personality:
+   *                     type: string
+   *                   response_guidelines:
+   *                     type: string
+   *                   interaction_etiquette:
+   *                     type: string
+   *                   scope_of_assistance:
+   *                     type: string
+   *                   formatting_and_presentation:
+   *                     type: string
+   *     responses:
+   *       200:
+   *         description: AI settings updated successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 settings:
+   *                   type: object
+   *       400:
+   *         description: Invalid request
+   *       403:
+   *         description: Unauthorized access (admin required)
+   *       401:
+   *         description: Not authenticated
+   */
+  app.put('/api/companies/:companyUuid/ai-settings', authenticateUser(supabase), (req, res) => 
+    aiSettingsController.updateSettings(req, res)
   );
 
 // Chat API Routes

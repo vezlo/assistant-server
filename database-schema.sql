@@ -70,6 +70,10 @@ INSERT INTO knex_migrations (name, batch, migration_time)
 SELECT '011_create_database_tool_configs.ts', 1, NOW()
 WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '011_create_database_tool_configs.ts');
 
+INSERT INTO knex_migrations (name, batch, migration_time) 
+SELECT '012_create_ai_settings.ts', 1, NOW()
+WHERE NOT EXISTS (SELECT 1 FROM knex_migrations WHERE name = '012_create_ai_settings.ts');
+
 -- Set migration lock to unlocked (0 = unlocked, 1 = locked)
 INSERT INTO knex_migrations_lock (index, is_locked) 
 VALUES (1, 0)
@@ -665,3 +669,21 @@ CREATE TABLE IF NOT EXISTS vezlo_database_tools (
 CREATE INDEX IF NOT EXISTS idx_database_tools_config_id ON vezlo_database_tools(config_id);
 CREATE INDEX IF NOT EXISTS idx_database_tools_uuid ON vezlo_database_tools(uuid);
 CREATE INDEX IF NOT EXISTS idx_database_tools_enabled ON vezlo_database_tools(enabled);
+
+-- ============================================================================
+-- AI SETTINGS TABLE
+-- ============================================================================
+
+-- AI configuration settings per company
+CREATE TABLE IF NOT EXISTS vezlo_ai_settings (
+  id BIGSERIAL PRIMARY KEY,
+  uuid UUID DEFAULT gen_random_uuid() UNIQUE NOT NULL,
+  company_id BIGINT NOT NULL REFERENCES vezlo_companies(id) ON DELETE CASCADE,
+  settings JSONB NOT NULL DEFAULT '{"model":"gpt-4o-mini","temperature":0.7,"max_tokens":1000,"top_k":null,"prompts":{"personality":"","response_guidelines":"","interaction_etiquette":"","scope_of_assistance":"","formatting_and_presentation":""}}',
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  UNIQUE(company_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_settings_company_id ON vezlo_ai_settings(company_id);
+CREATE INDEX IF NOT EXISTS idx_ai_settings_uuid ON vezlo_ai_settings(uuid);

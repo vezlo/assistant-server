@@ -20,6 +20,8 @@ import { ValidationService } from '../services/ValidationService';
 import { DatabaseToolService } from '../services/DatabaseToolService';
 import { DatabaseToolConfigService } from '../services/DatabaseToolConfigService';
 import { DatabaseToolConfigController } from '../controllers/DatabaseToolConfigController';
+import { AISettingsService } from '../services/AISettingsService';
+import { AISettingsController } from '../controllers/AISettingsController';
 
 export interface ServiceInitOptions {
   supabase: SupabaseClient;
@@ -42,6 +44,7 @@ export interface InitializedCoreServices {
     validationService: ValidationService;
     databaseToolService: any;
     databaseToolConfigService: DatabaseToolConfigService;
+    aiSettingsService: AISettingsService;
   };
   controllers: {
     chatController: ChatController;
@@ -51,6 +54,7 @@ export interface InitializedCoreServices {
     companyController: CompanyController;
     slackController: SlackController;
     databaseToolConfigController: DatabaseToolConfigController;
+    aiSettingsController: AISettingsController;
   };
   config: {
     chatHistoryLength: number;
@@ -167,12 +171,18 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
     process.env.AI_VALIDATION_ENABLED === 'true'
   );
 
+  // Initialize AI Settings service first (needed by ChatController)
+  const aiSettingsService = new AISettingsService(supabase);
+  const aiSettingsController = new AISettingsController(aiSettingsService);
+  logger.info('✅ AI Settings service initialized');
+
   const chatController = new ChatController(chatManager, storage, supabase, {
     historyLength: resolvedHistoryLength,
     intentService,
     realtimePublisher,
     validationService,
-    databaseToolService
+    databaseToolService,
+    aiSettingsService
   });
 
   const knowledgeController = new KnowledgeController(knowledgeBase, aiService, citationService);
@@ -201,7 +211,8 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
       slackService,
       databaseToolService,
       validationService,
-      databaseToolConfigService
+      databaseToolConfigService,
+      aiSettingsService
     },
     controllers: {
       chatController,
@@ -210,7 +221,8 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
       apiKeyController,
       companyController,
       slackController,
-      databaseToolConfigController
+      databaseToolConfigController,
+      aiSettingsController
     },
     config: {
       chatHistoryLength: resolvedHistoryLength

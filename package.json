@@ -1,6 +1,6 @@
 {
   "name": "@vezlo/assistant-server",
-  "version": "2.11.1",
+  "version": "2.12.0",
   "description": "Production-ready AI Assistant Server with advanced RAG (chunk-based semantic search + adjacent retrieval), conversation management, real-time communication, and human agent handoff",
   "main": "dist/src/server.js",
   "types": "dist/src/server.d.ts",
@@ -9,6 +9,7 @@
     "vezlo-setup": "./scripts/setup.js",
     "vezlo-validate": "./scripts/validate-db.js",
     "vezlo-seed-default": "./scripts/seed-default.js",
+    "vezlo-seed-ai-settings": "./scripts/seed-ai-settings.js",
     "vezlo-generate-key": "./scripts/generate-key.js"
   },
   "files": [
@@ -30,6 +31,7 @@
     "prepublishOnly": "npm run build",
     "setup": "node scripts/setup.js",
     "seed-default": "node scripts/seed-default.js",
+    "seed-ai-settings": "node scripts/seed-ai-settings.js",
     "generate-key": "node scripts/generate-key.js",
     "validate": "node scripts/validate-db.js",
     "migrate:make": "knex migrate:make",

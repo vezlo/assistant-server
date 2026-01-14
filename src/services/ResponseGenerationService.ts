@@ -37,6 +37,13 @@ export class ResponseGenerationService {
   private aiService?: AIService;
   private databaseToolService?: DatabaseToolService;
   private chatHistoryLength: number;
+  private currentAISettingsPrompts?: {
+    personality?: string;
+    response_guidelines?: string;
+    interaction_etiquette?: string;
+    scope_of_assistance?: string;
+    formatting_and_presentation?: string;
+  };
 
   constructor(
     intentService: IntentService | undefined,
@@ -48,6 +55,20 @@ export class ResponseGenerationService {
     this.aiService = aiService;
     this.databaseToolService = databaseToolService;
     this.chatHistoryLength = chatHistoryLength;
+  }
+
+  /**
+   * Update AI settings prompts for intent classification
+   */
+  setAISettingsPrompts(prompts?: {
+    personality?: string;
+    response_guidelines?: string;
+    interaction_etiquette?: string;
+    scope_of_assistance?: string;
+    formatting_and_presentation?: string;
+  }): void {
+    this.currentAISettingsPrompts = prompts;
+    logger.info(`🎭 AI settings prompts ${prompts ? 'set' : 'cleared'} for intent classification`);
   }
 
   /**
@@ -88,7 +109,8 @@ export class ResponseGenerationService {
     return this.intentService.classify({
       message,
       conversationHistory: resolvedHistory,
-      availableTools: availableTools.length > 0 ? availableTools : undefined
+      availableTools: availableTools.length > 0 ? availableTools : undefined,
+      aiSettingsPrompts: this.currentAISettingsPrompts
     });
   }
 
@@ -267,12 +289,13 @@ export class ResponseGenerationService {
 
   /**
    * Get fallback response for intent
+   * Note: "personality" intent is NOT included here - it should go through LLM
+   * to use the custom AI personality from settings
    */
   private getFallbackResponse(intent: string): string {
     const fallbacks: Record<string, string> = {
       greeting: 'Hello! How can I help you today?',
       acknowledgment: "You're welcome! Let me know if you need anything else.",
-      personality: `I'm ${process.env.ASSISTANT_NAME || 'AI Assistant'}, your AI assistant for ${process.env.ORGANIZATION_NAME || 'Your Organization'}.`,
       clarification: "I'm not sure I understood. Could you clarify what you need help with?",
       guardrail: "I can help with documentation or implementation guidance, but I can't share credentials or confidential configuration.",
       human_support_request: "I'd be happy to connect you with our support team. Could you please provide your email address?",

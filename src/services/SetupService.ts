@@ -128,6 +128,16 @@ export class SetupService {
 
       logger.info(`✅ Admin profile created: ${profile.uuid}`);
 
+      // Create default AI settings for the company
+      try {
+        const { AISettingsService } = await import('./AISettingsService');
+        const aiSettingsService = new AISettingsService(this.supabase);
+        await aiSettingsService.createDefaultSettings(company.id);
+        logger.info(`✅ Default AI settings created for company: ${company.name}`);
+      } catch (aiError) {
+        logger.warn(`⚠️  Failed to create AI settings (non-critical): ${aiError}`);
+      }
+
       const result = {
         success: true,
         alreadyExists: false,
