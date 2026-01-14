@@ -68,7 +68,6 @@ export class ResponseGenerationService {
     formatting_and_presentation?: string;
   }): void {
     this.currentAISettingsPrompts = prompts;
-    logger.info(`🎭 AI settings prompts ${prompts ? 'set' : 'cleared'} for intent classification`);
   }
 
   /**

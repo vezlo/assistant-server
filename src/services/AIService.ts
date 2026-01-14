@@ -55,22 +55,6 @@ export class AIService {
     this.aiSettings = settings;
     this.systemPrompt = this.buildSystemPrompt();
     logger.info('🎨 AI settings updated and system prompt rebuilt');
-    logger.info('📝 AI Settings Prompts:');
-    if (settings.prompts?.personality) {
-      logger.info(`   - Personality: ${settings.prompts.personality.substring(0, 100)}...`);
-    }
-    if (settings.prompts?.response_guidelines) {
-      logger.info(`   - Response Guidelines: ${settings.prompts.response_guidelines.substring(0, 100)}...`);
-    }
-    if (settings.prompts?.interaction_etiquette) {
-      logger.info(`   - Interaction Etiquette: ${settings.prompts.interaction_etiquette.substring(0, 100)}...`);
-    }
-    if (settings.prompts?.scope_of_assistance) {
-      logger.info(`   - Scope of Assistance: ${settings.prompts.scope_of_assistance.substring(0, 100)}...`);
-    }
-    if (settings.prompts?.formatting_and_presentation) {
-      logger.info(`   - Formatting & Presentation: ${settings.prompts.formatting_and_presentation.substring(0, 100)}...`);
-    }
   }
 
   private buildSystemPrompt(): string {
@@ -87,20 +71,13 @@ export class AIService {
       customInstructions: this.config.customInstructions
     };
 
-    logger.info('🔨 Building system prompt...');
-    logger.info(`   - Organization: ${orgName}`);
-    logger.info(`   - Assistant: ${assistantName}`);
-    logger.info(`   - Has AI Settings Prompts: ${!!this.aiSettings?.prompts}`);
+    logger.info(`🔨 Building system prompt for ${assistantName}`);
 
     // Use PromptService to build system prompt with user-defined prompts
-    const systemPrompt = PromptService.buildSystemPrompt(
+    return PromptService.buildSystemPrompt(
       promptContext,
       this.aiSettings?.prompts
     );
-
-    PromptService.logPromptUsage('System', systemPrompt.length);
-    
-    return systemPrompt;
   }
 
   async generateResponse(message: string, context?: ChatContext | any): Promise<AIResponse> {

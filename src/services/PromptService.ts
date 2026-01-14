@@ -242,11 +242,4 @@ When generating the "response" field for any intent above, you MUST follow the A
 
     return prompt;
   }
-
-  /**
-   * Log prompt usage for debugging
-   */
-  static logPromptUsage(type: string, length: number): void {
-    logger.info(`📝 ${type} prompt generated (${length} chars)`);
-  }
 }
