@@ -483,11 +483,85 @@ app.post('/api/seed-default', requireServices, async (req, res) => {
 // Generate API Key
 app.post('/api/generate-key', requireServices, async (req, res) => {
   try {
-    const apiKey = (req.query.key || req.headers['x-migration-key']) as string;
+    const authHeader = req.headers.authorization;
+    const migrationKey = (req.query.key as string) || undefined;
 
-    // Validate API key
+    // Check for Bearer token first (frontend/admin access)
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      const { JWTUtils } = await import('../dist/src/middleware/auth');
+      const decoded = JWTUtils.verifyToken(token);
+
+      const { data: user } = await supabase
+        .from('vezlo_users')
+        .select('*')
+        .eq('id', decoded.user_id)
+        .single();
+
+      if (!user || user.token_updated_at !== decoded.user_token_updated_at) {
+        res.status(401).json({
+          success: false,
+          message: 'Invalid or expired token',
+          error: 'UNAUTHORIZED'
+        });
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from('vezlo_user_company_profiles')
+        .select(`
+          role,
+          company_id,
+          companies:company_id(
+            id,
+            name
+          )
+        `)
+        .eq('user_id', user.id)
+        .eq('id', decoded.user_company_profile_id)
+        .single();
+
+      if (!profile || profile.role !== 'admin') {
+        res.status(403).json({
+          success: false,
+          message: 'Only admin users can generate API keys',
+          error: 'FORBIDDEN'
+        });
+        return;
+      }
+
+      const companyId = parseInt(profile.company_id);
+      const { ApiKeyService } = await import('../dist/src/services/ApiKeyService');
+      const apiKeyService = new ApiKeyService(supabase);
+      const result = await apiKeyService.generateApiKey(companyId);
+
+      const companyName = (profile.companies as any)?.name || 'Unknown Company';
+
+      res.status(200).json({
+        success: true,
+        message: 'API key generated successfully',
+        api_key_details: {
+          uuid: result.uuid,
+          company_name: companyName,
+          user_name: user.name,
+          api_key: result.apiKey
+        }
+      });
+      return;
+    }
+
+    // Fallback to migration key (Vercel deployment)
+    if (!migrationKey) {
+      res.status(401).json({
+        success: false,
+        message: 'No authentication provided',
+        error: 'UNAUTHORIZED'
+      });
+      return;
+    }
+
     const { MigrationService } = await import('../dist/src/services/MigrationService');
-    const keyValid = MigrationService.validateApiKey(apiKey);
+    const keyValid = MigrationService.validateApiKey(migrationKey);
     
     if (!keyValid) {
       res.status(401).json({
@@ -498,7 +572,6 @@ app.post('/api/generate-key', requireServices, async (req, res) => {
       return;
     }
 
-    // Execute generate key using SetupService
     const { SetupService } = await import('../dist/src/services/SetupService');
     const setupService = new SetupService(supabase);
     const response = await setupService.executeGenerateKey();

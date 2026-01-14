@@ -307,7 +307,7 @@ app.post('/api/api-keys', authenticateUser(supabase), (req, res) => apiKeyContro
  *       500:
  *         description: Internal server error
  */
-app.get('/api/api-keys/status', authenticateUser(supabase), (req, res) => apiKeyController.getApiKeyStatus(req, res));
+  app.get('/api/api-keys/status', authenticateUser(supabase), (req, res) => apiKeyController.getApiKeyStatus(req, res));
 
   /**
    * @swagger
@@ -1989,16 +1989,20 @@ app.put('/api/knowledge/items/:uuid', authenticateUser(supabase), (req, res) => 
    * @swagger
    * /api/generate-key:
    *   post:
-   *     summary: Generate API key for the default admin
-   *     description: Generates an API key for the default admin user's company
+   *     summary: Generate API key
+   *     description: |
+   *       Generates an API key for a company. Supports two authentication methods:
+   *       - Bearer token: For authenticated admin users, generates key for their company
+   *       - Migration key: For Vercel deployments, generates key for default admin's company
    *     tags: [System]
    *     security:
+   *       - bearerAuth: []
    *       - migrationKey: []
    *     parameters:
    *       - in: query
    *         name: key
-   *         description: Migration secret key
-   *         required: true
+   *         description: Migration secret key (alternative to Bearer token)
+   *         required: false
    *         schema:
    *           type: string
    *     responses:
@@ -2017,7 +2021,11 @@ app.put('/api/knowledge/items/:uuid', authenticateUser(supabase), (req, res) => 
    *                   example: "API key generated successfully"
    *                 api_key_details:
    *                   type: object
+   *                   description: API key details
    *                   properties:
+   *                     uuid:
+   *                       type: string
+   *                       example: "123e4567-e89b-12d3-a456-426614174000"
    *                     company_name:
    *                       type: string
    *                       example: "Vezlo"
@@ -2028,7 +2036,7 @@ app.put('/api/knowledge/items/:uuid', authenticateUser(supabase), (req, res) => 
    *                       type: string
    *                       example: "v.bzkO2h7Ga.c5MGe0zX-2CU-IeZPqreT6xSRCgq3Tw"
    *       401:
-   *         description: Unauthorized
+   *         description: Unauthorized - Invalid or missing authentication
    *         content:
    *           application/json:
    *             schema:
@@ -2043,17 +2051,107 @@ app.put('/api/knowledge/items/:uuid', authenticateUser(supabase), (req, res) => 
    *                 error:
    *                   type: string
    *                   example: "UNAUTHORIZED"
+   *       403:
+   *         description: Forbidden - Only admin users can generate API keys
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 message:
+   *                   type: string
+   *                   example: "Only admin users can generate API keys"
+   *                 error:
+   *                   type: string
+   *                   example: "FORBIDDEN"
    *       500:
    *         description: Failed to generate API key
    */
   app.post('/api/generate-key', asyncHandler(async (req: any, res: any) => {
-    // Extract API key from query or header
-    const apiKey = req.query.key || req.headers['x-migration-key'];
-
     try {
-      // Validate API key
+      const authHeader = req.headers.authorization;
+      const migrationKey = req.query.key;
+
+      // Check for Bearer token first (frontend/admin access)
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        // Use authenticateUser middleware logic
+        const token = authHeader.substring(7);
+        const { JWTUtils } = await import('./middleware/auth');
+        const decoded = JWTUtils.verifyToken(token);
+
+        const { data: user } = await supabase
+          .from('vezlo_users')
+          .select('*')
+          .eq('id', decoded.user_id)
+          .single();
+
+        if (!user || user.token_updated_at !== decoded.user_token_updated_at) {
+          res.status(401).json({
+            success: false,
+            message: 'Invalid or expired token',
+            error: 'UNAUTHORIZED'
+          });
+          return;
+        }
+
+        const { data: profile } = await supabase
+          .from('vezlo_user_company_profiles')
+          .select(`
+            role,
+            company_id,
+            companies:company_id(
+              id,
+              name
+            )
+          `)
+          .eq('user_id', user.id)
+          .eq('id', decoded.user_company_profile_id)
+          .single();
+
+        if (!profile || profile.role !== 'admin') {
+          res.status(403).json({
+            success: false,
+            message: 'Only admin users can generate API keys',
+            error: 'FORBIDDEN'
+          });
+          return;
+        }
+
+        const companyId = parseInt(profile.company_id);
+        const { ApiKeyService } = await import('./services/ApiKeyService');
+        const apiKeyService = new ApiKeyService(supabase);
+        const result = await apiKeyService.generateApiKey(companyId);
+
+        const companyName = (profile.companies as any)?.name || 'Unknown Company';
+
+        res.status(200).json({
+          success: true,
+          message: 'API key generated successfully',
+          api_key_details: {
+            uuid: result.uuid,
+            company_name: companyName,
+            user_name: user.name,
+            api_key: result.apiKey
+          }
+        });
+        return;
+      }
+
+      // Fallback to migration key (Vercel deployment)
+      if (!migrationKey) {
+        res.status(401).json({
+          success: false,
+          message: 'No authentication provided',
+          error: 'UNAUTHORIZED'
+        });
+        return;
+      }
+
       const { MigrationService } = await import('./services/MigrationService');
-      const keyValid = MigrationService.validateApiKey(apiKey);
+      const keyValid = MigrationService.validateApiKey(migrationKey);
       
       if (!keyValid) {
         res.status(401).json({
@@ -2064,15 +2162,13 @@ app.put('/api/knowledge/items/:uuid', authenticateUser(supabase), (req, res) => 
         return;
       }
 
-      // Initialize Supabase
-      const supabase = createClient(
+      const setupSupabase = createClient(
         process.env.SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_KEY!
       );
 
-      // Execute generate-key using SetupService
       const { SetupService } = await import('./services/SetupService');
-      const setupService = new SetupService(supabase);
+      const setupService = new SetupService(setupSupabase);
       const response = await setupService.executeGenerateKey();
 
       res.status(200).json({

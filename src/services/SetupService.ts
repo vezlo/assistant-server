@@ -355,31 +355,18 @@ export class SetupService {
     // Use the joined company ID (same as generate-key.js script)
     const companyId = (profile.companies as any)?.id || profile.company_id;
     const { uuid, apiKey } = await apiKeyService.generateApiKey(typeof companyId === 'number' ? companyId : parseInt(String(companyId)));
-    
-    // Debug profile structure
-    console.log('Profile structure:', JSON.stringify(profile, null, 2));
 
-    // Get company name (handle type issues with fallbacks)
     let companyName = 'Unknown Company';
-    try {
-      // Access as Record to avoid TypeScript errors since structure can vary
-      const companies = profile.companies as Record<string, any>;
-      if (companies && typeof companies === 'object') {
-        if (companies.name) {
-          companyName = companies.name;
-        }
-      }
-    } catch (e) {
-      console.log('Error getting company name:', e);
+    const companies = profile.companies as Record<string, any>;
+    if (companies && typeof companies === 'object' && companies.name) {
+      companyName = companies.name;
     }
     
-    // Prepare response
-    const response = {
+    return {
+      uuid,
       company_name: companyName,
       user_name: user.name,
       api_key: apiKey
     };
-    
-    return response;
   }
 }
