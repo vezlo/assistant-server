@@ -11,6 +11,7 @@ import { config as globalConfig } from './config/global';
 import logger from './config/logger';
 import { errorHandler, notFoundHandler, asyncHandler } from './middleware/errorHandler';
 import { authenticateUser, authenticateApiKey, authenticateUserOrApiKey, AuthenticatedRequest } from './middleware/auth';
+import { requireAdmin } from './middleware/roleGuard';
 import { ChatController } from './controllers/ChatController';
 import { KnowledgeController } from './controllers/KnowledgeController';
 import { AuthController } from './controllers/AuthController';
@@ -94,6 +95,8 @@ let companyController: CompanyController;
 let slackController: SlackController;
 let databaseToolConfigController: any;
 let aiSettingsController: any;
+let teamController: any;
+let accountController: any;
 
 async function initializeServices() {
   try {
@@ -114,6 +117,8 @@ async function initializeServices() {
     slackController = controllers.slackController;
     databaseToolConfigController = controllers.databaseToolConfigController;
     aiSettingsController = controllers.aiSettingsController;
+    teamController = controllers.teamController;
+    accountController = controllers.accountController;
 
     logger.info('All services initialized successfully');
   } catch (error) {
@@ -277,7 +282,7 @@ app.get('/api/auth/me', authenticateUser(supabase), (req, res) => authController
  *       500:
  *         description: Internal server error
  */
-app.post('/api/api-keys', authenticateUser(supabase), (req, res) => apiKeyController.generateApiKey(req, res));
+app.post('/api/api-keys', authenticateUser(supabase), requireAdmin, (req, res) => apiKeyController.generateApiKey(req, res));
 
 /**
  * @swagger
@@ -307,7 +312,7 @@ app.post('/api/api-keys', authenticateUser(supabase), (req, res) => apiKeyContro
  *       500:
  *         description: Internal server error
  */
-  app.get('/api/api-keys/status', authenticateUser(supabase), (req, res) => apiKeyController.getApiKeyStatus(req, res));
+  app.get('/api/api-keys/status', authenticateUser(supabase), requireAdmin, (req, res) => apiKeyController.getApiKeyStatus(req, res));
 
   /**
    * @swagger
@@ -405,7 +410,7 @@ app.post('/api/api-keys', authenticateUser(supabase), (req, res) => apiKeyContro
  *       401:
  *         description: Not authenticated
  */
-  app.post('/api/database-tools/config', authenticateUser(supabase), (req, res) => 
+  app.post('/api/database-tools/config', authenticateUser(supabase), requireAdmin, (req, res) => 
     databaseToolConfigController.createConfig(req, res)
   );
 
@@ -424,7 +429,7 @@ app.post('/api/api-keys', authenticateUser(supabase), (req, res) => apiKeyContro
  *       404:
  *         description: No configuration found
  */
-  app.get('/api/database-tools/config', authenticateUser(supabase), (req, res) => 
+  app.get('/api/database-tools/config', authenticateUser(supabase), requireAdmin, (req, res) => 
     databaseToolConfigController.getConfig(req, res)
   );
 
@@ -459,7 +464,7 @@ app.post('/api/api-keys', authenticateUser(supabase), (req, res) => apiKeyContro
  *       200:
  *         description: Configuration updated successfully
  */
-  app.put('/api/database-tools/config/:configId', authenticateUser(supabase), (req, res) => 
+  app.put('/api/database-tools/config/:configId', authenticateUser(supabase), requireAdmin, (req, res) => 
     databaseToolConfigController.updateConfig(req, res)
   );
 
@@ -482,7 +487,7 @@ app.post('/api/api-keys', authenticateUser(supabase), (req, res) => apiKeyContro
  *       200:
  *         description: Configuration deleted successfully
  */
-  app.delete('/api/database-tools/config/:configId', authenticateUser(supabase), (req, res) => 
+  app.delete('/api/database-tools/config/:configId', authenticateUser(supabase), requireAdmin, (req, res) => 
     databaseToolConfigController.deleteConfig(req, res)
   );
 
@@ -513,7 +518,7 @@ app.post('/api/api-keys', authenticateUser(supabase), (req, res) => apiKeyContro
  *       200:
  *         description: Validation result
  */
-  app.post('/api/database-tools/validate', authenticateUser(supabase), (req, res) => 
+  app.post('/api/database-tools/validate', authenticateUser(supabase), requireAdmin, (req, res) => 
     databaseToolConfigController.validateConnection(req, res)
   );
 
@@ -544,7 +549,7 @@ app.post('/api/api-keys', authenticateUser(supabase), (req, res) => apiKeyContro
  *       200:
  *         description: List of tables
  */
-  app.post('/api/database-tools/tables', authenticateUser(supabase), (req, res) => 
+  app.post('/api/database-tools/tables', authenticateUser(supabase), requireAdmin, (req, res) => 
     databaseToolConfigController.getTables(req, res)
   );
 
@@ -581,7 +586,7 @@ app.post('/api/api-keys', authenticateUser(supabase), (req, res) => apiKeyContro
  *       200:
  *         description: Table schema with columns
  */
-  app.post('/api/database-tools/tables/:tableName/schema', authenticateUser(supabase), (req, res) => 
+  app.post('/api/database-tools/tables/:tableName/schema', authenticateUser(supabase), requireAdmin, (req, res) => 
     databaseToolConfigController.getTableSchema(req, res)
   );
 
@@ -604,7 +609,7 @@ app.post('/api/api-keys', authenticateUser(supabase), (req, res) => apiKeyContro
  *       200:
  *         description: List of tables
  */
-  app.get('/api/database-tools/config/:configId/tables', authenticateUser(supabase), (req, res) => 
+  app.get('/api/database-tools/config/:configId/tables', authenticateUser(supabase), requireAdmin, (req, res) => 
     databaseToolConfigController.getTablesFromConfig(req, res)
   );
 
@@ -632,7 +637,7 @@ app.post('/api/api-keys', authenticateUser(supabase), (req, res) => apiKeyContro
  *       200:
  *         description: Table schema with columns
  */
-  app.get('/api/database-tools/config/:configId/tables/:tableName/schema', authenticateUser(supabase), (req, res) => 
+  app.get('/api/database-tools/config/:configId/tables/:tableName/schema', authenticateUser(supabase), requireAdmin, (req, res) => 
     databaseToolConfigController.getTableSchemaFromConfig(req, res)
   );
 
@@ -699,7 +704,7 @@ app.post('/api/api-keys', authenticateUser(supabase), (req, res) => apiKeyContro
  *       201:
  *         description: Tool created successfully
  */
-  app.post('/api/database-tools/tools', authenticateUser(supabase), (req, res) => 
+  app.post('/api/database-tools/tools', authenticateUser(supabase), requireAdmin, (req, res) => 
     databaseToolConfigController.createTool(req, res)
   );
 
@@ -716,7 +721,7 @@ app.post('/api/api-keys', authenticateUser(supabase), (req, res) => apiKeyContro
  *       200:
  *         description: List of tools
  */
-  app.get('/api/database-tools/tools', authenticateUser(supabase), (req, res) => 
+  app.get('/api/database-tools/tools', authenticateUser(supabase), requireAdmin, (req, res) => 
     databaseToolConfigController.getTools(req, res)
   );
 
@@ -780,7 +785,7 @@ app.post('/api/api-keys', authenticateUser(supabase), (req, res) => apiKeyContro
  *       200:
  *         description: Tool updated successfully
  */
-  app.put('/api/database-tools/tools/:toolId', authenticateUser(supabase), (req, res) => 
+  app.put('/api/database-tools/tools/:toolId', authenticateUser(supabase), requireAdmin, (req, res) => 
     databaseToolConfigController.updateTool(req, res)
   );
 
@@ -803,7 +808,7 @@ app.post('/api/api-keys', authenticateUser(supabase), (req, res) => apiKeyContro
  *       200:
  *         description: Tool deleted successfully
  */
-  app.delete('/api/database-tools/tools/:toolId', authenticateUser(supabase), (req, res) => 
+  app.delete('/api/database-tools/tools/:toolId', authenticateUser(supabase), requireAdmin, (req, res) => 
     databaseToolConfigController.deleteTool(req, res)
   );
 
@@ -864,7 +869,7 @@ app.post('/api/api-keys', authenticateUser(supabase), (req, res) => apiKeyContro
    *       401:
    *         description: Not authenticated
    */
-  app.get('/api/companies/:companyUuid/ai-settings', authenticateUser(supabase), (req, res) => 
+  app.get('/api/companies/:companyUuid/ai-settings', authenticateUser(supabase), requireAdmin, (req, res) => 
     aiSettingsController.getSettings(req, res)
   );
 
@@ -937,8 +942,241 @@ app.post('/api/api-keys', authenticateUser(supabase), (req, res) => apiKeyContro
    *       401:
    *         description: Not authenticated
    */
-  app.put('/api/companies/:companyUuid/ai-settings', authenticateUser(supabase), (req, res) => 
+  app.put('/api/companies/:companyUuid/ai-settings', authenticateUser(supabase), requireAdmin, (req, res) => 
     aiSettingsController.updateSettings(req, res)
+  );
+
+// Team Management API Routes
+/**
+ * @swagger
+ * /api/companies/{companyUuid}/team:
+ *   post:
+ *     summary: Create a new team member
+ *     description: Create a new user and add them to the company (Admin only)
+ *     tags: [Team]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: companyUuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Company UUID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, password, name, role]
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               password:
+ *                 type: string
+ *                 minLength: 6
+ *               name:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *                 enum: [admin, user]
+ *     responses:
+ *       201:
+ *         description: Team member created successfully
+ *       400:
+ *         description: Invalid request
+ *       403:
+ *         description: Admin access required
+ *       401:
+ *         description: Not authenticated
+ */
+  app.post('/api/companies/:companyUuid/team', authenticateUser(supabase), requireAdmin, (req, res) => 
+    teamController.createTeamMember(req, res)
+  );
+
+/**
+ * @swagger
+ * /api/companies/{companyUuid}/team:
+ *   get:
+ *     summary: Get team members
+ *     description: Get team members for the company with pagination and search
+ *     tags: [Team]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: companyUuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Company UUID
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search by user name
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *           maximum: 100
+ *         description: Items per page
+ *     responses:
+ *       200:
+ *         description: Team members retrieved successfully
+ *       401:
+ *         description: Not authenticated
+ */
+  app.get('/api/companies/:companyUuid/team', authenticateUser(supabase), (req, res) => 
+    teamController.getTeamMembers(req, res)
+  );
+
+/**
+ * @swagger
+ * /api/companies/{companyUuid}/team/{userUuid}:
+ *   put:
+ *     summary: Update team member
+ *     description: Update team member details (Admin only)
+ *     tags: [Team]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: companyUuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: userUuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User profile UUID
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *                 enum: [admin, user]
+ *               status:
+ *                 type: string
+ *                 enum: [active, inactive]
+ *               password:
+ *                 type: string
+ *                 minLength: 6
+ *     responses:
+ *       200:
+ *         description: Team member updated successfully
+ *       400:
+ *         description: Invalid request
+ *       403:
+ *         description: Admin access required
+ *       401:
+ *         description: Not authenticated
+ */
+  app.put('/api/companies/:companyUuid/team/:userUuid', authenticateUser(supabase), requireAdmin, (req, res) => 
+    teamController.updateTeamMember(req, res)
+  );
+
+/**
+ * @swagger
+ * /api/companies/{companyUuid}/team/{userUuid}:
+ *   delete:
+ *     summary: Remove team member
+ *     description: Remove a team member from the company (Admin only)
+ *     tags: [Team]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: companyUuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: userUuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User profile UUID
+ *     responses:
+ *       200:
+ *         description: Team member removed successfully
+ *       400:
+ *         description: Cannot remove last admin
+ *       403:
+ *         description: Admin access required
+ *       401:
+ *         description: Not authenticated
+ */
+  app.delete('/api/companies/:companyUuid/team/:userUuid', authenticateUser(supabase), requireAdmin, (req, res) => 
+    teamController.deleteTeamMember(req, res)
+  );
+
+// Account Management APIs (for all authenticated users)
+/**
+ * @swagger
+ * /api/account/profile:
+ *   get:
+ *     summary: Get current user's profile
+ *     description: Get the authenticated user's account information
+ *     tags: [Account]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Profile retrieved successfully
+ *       401:
+ *         description: Not authenticated
+ */
+  app.get('/api/account/profile', authenticateUser(supabase), (req, res) => 
+    accountController.getProfile(req, res)
+  );
+
+/**
+ * @swagger
+ * /api/account/profile:
+ *   put:
+ *     summary: Update current user's profile
+ *     description: Update name and password for the authenticated user (self-update only)
+ *     tags: [Account]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *                 minLength: 6
+ *     responses:
+ *       200:
+ *         description: Profile updated successfully
+ *       400:
+ *         description: Invalid request
+ *       401:
+ *         description: Not authenticated
+ */
+  app.put('/api/account/profile', authenticateUser(supabase), (req, res) => 
+    accountController.updateProfile(req, res)
   );
 
 // Chat API Routes
@@ -1153,7 +1391,7 @@ app.get('/api/conversations/:uuid/messages', authenticateUser(supabase), (req, r
  *       500:
  *         description: Internal server error
  */
-app.post('/api/conversations/:uuid/join', authenticateUser(supabase), (req, res) =>
+app.post('/api/conversations/:uuid/join', authenticateUser(supabase), requireAdmin, (req, res) =>
   chatController.joinConversation(req as AuthenticatedRequest, res)
 );
 
@@ -1196,7 +1434,7 @@ app.post('/api/conversations/:uuid/join', authenticateUser(supabase), (req, res)
  *       500:
  *         description: Internal server error
  */
-app.post('/api/conversations/:uuid/messages/agent', authenticateUser(supabase), (req, res) =>
+app.post('/api/conversations/:uuid/messages/agent', authenticateUser(supabase), requireAdmin, (req, res) =>
   (chatController as any).sendAgentMessage(req as AuthenticatedRequest, res)
 );
 
@@ -1228,7 +1466,7 @@ app.post('/api/conversations/:uuid/messages/agent', authenticateUser(supabase), 
  *       500:
  *         description: Internal server error
  */
-app.post('/api/conversations/:uuid/close', authenticateUser(supabase), (req, res) =>
+app.post('/api/conversations/:uuid/close', authenticateUser(supabase), requireAdmin, (req, res) =>
   (chatController as any).closeConversation(req as AuthenticatedRequest, res)
 );
 
@@ -1260,7 +1498,7 @@ app.post('/api/conversations/:uuid/close', authenticateUser(supabase), (req, res
  *       500:
  *         description: Internal server error
  */
-app.post('/api/conversations/:uuid/archive', authenticateUser(supabase), (req, res) =>
+app.post('/api/conversations/:uuid/archive', authenticateUser(supabase), requireAdmin, (req, res) =>
   (chatController as any).archiveConversation(req as AuthenticatedRequest, res)
 );
 
@@ -1336,7 +1574,7 @@ app.get('/api/knowledge/citations/:uuid/context', (req, res) =>
  *       500:
  *         description: Internal server error
  */
-app.delete('/api/conversations/:uuid', authenticateUser(supabase), (req, res) => chatController.deleteConversation(req, res));
+app.delete('/api/conversations/:uuid', authenticateUser(supabase), requireAdmin, (req, res) => chatController.deleteConversation(req, res));
 
 /**
  * @swagger
@@ -1660,7 +1898,7 @@ app.get('/api/knowledge/items/:uuid', authenticateUser(supabase), (req, res) => 
  *       500:
  *         description: Internal server error
  */
-app.put('/api/knowledge/items/:uuid', authenticateUser(supabase), (req, res) => knowledgeController.updateItem(req, res));
+app.put('/api/knowledge/items/:uuid', authenticateUser(supabase), requireAdmin, (req, res) => knowledgeController.updateItem(req, res));
 
 /**
  * @swagger
@@ -1688,7 +1926,7 @@ app.put('/api/knowledge/items/:uuid', authenticateUser(supabase), (req, res) => 
  *       500:
  *         description: Internal server error
  */
-  app.delete('/api/knowledge/items/:uuid', authenticateUser(supabase), (req, res) => knowledgeController.deleteItem(req, res));
+  app.delete('/api/knowledge/items/:uuid', authenticateUser(supabase), requireAdmin, (req, res) => knowledgeController.deleteItem(req, res));
 
   // ============================================================================
   // MIGRATION ENDPOINTS

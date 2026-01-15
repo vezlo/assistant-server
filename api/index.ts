@@ -21,6 +21,7 @@ import { specs, swaggerUi, swaggerUiOptions } from '../dist/src/config/swagger';
 import { config as globalConfig } from '../dist/src/config/global';
 import { errorHandler, notFoundHandler } from '../dist/src/middleware/errorHandler';
 import { authenticateUser, authenticateApiKey, authenticateUserOrApiKey } from '../dist/src/middleware/auth';
+import { requireAdmin } from '../dist/src/middleware/roleGuard';
 
 // Import services from compiled dist
 import { initializeCoreServices } from '../dist/src/bootstrap/initializeServices';
@@ -30,6 +31,7 @@ import { AuthController } from '../dist/src/controllers/AuthController';
 import { ApiKeyController } from '../dist/src/controllers/ApiKeyController';
 import { CompanyController } from '../dist/src/controllers/CompanyController';
 import { SlackController } from '../dist/src/controllers/SlackController';
+import { TeamController } from '../dist/src/controllers/TeamController';
 import { RealtimePublisher } from '../dist/src/services/RealtimePublisher';
 
 // Load environment variables
@@ -93,6 +95,8 @@ let companyController: CompanyController;
 let slackController: SlackController;
 let databaseToolConfigController: any;
 let aiSettingsController: any;
+let teamController: TeamController;
+let accountController: any;
 let supabase: any;
 let realtimePublisher: RealtimePublisher | null = null;
 
@@ -124,6 +128,8 @@ async function initializeServices() {
     slackController = controllers.slackController;
     databaseToolConfigController = controllers.databaseToolConfigController;
     aiSettingsController = controllers.aiSettingsController;
+    teamController = controllers.teamController;
+    accountController = controllers.accountController;
 
     servicesInitialized = true;
     logger.info('All services initialized successfully');
@@ -243,6 +249,29 @@ const requireAuth = (req: any, res: any, next: any) => {
   authMiddleware(req, res, next);
 };
 
+const requireAdmin = async (req: any, res: any, next: any) => {
+  try {
+    // First authenticate user
+    const authMiddleware = authenticateUser(supabase);
+    await new Promise<void>((resolve, reject) => {
+      authMiddleware(req, res, (err?: any) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    // Then check admin role
+    if (!req.profile || req.profile.role !== 'admin') {
+      res.status(403).json({ error: 'Admin access required' });
+      return;
+    }
+
+    next();
+  } catch (error) {
+    res.status(401).json({ error: 'Authentication failed' });
+  }
+};
+
 // Helper function for routes that accept both JWT and API key
 const requireUserOrApiKey = (req: any, res: any, next: any) => {
   const authMiddleware = authenticateUserOrApiKey(supabase);
@@ -255,8 +284,8 @@ app.post('/api/auth/logout', requireServices, requireAuth, (req, res) => authCon
 app.get('/api/auth/me', requireServices, requireAuth, (req, res) => authController.getMe(req, res));
 
 // API Key Management APIs
-app.post('/api/api-keys', requireServices, requireAuth, (req, res) => apiKeyController.generateApiKey(req, res));
-app.get('/api/api-keys/status', requireServices, requireAuth, (req, res) => apiKeyController.getApiKeyStatus(req, res));
+app.post('/api/api-keys', requireServices, requireAuth, requireAdmin, (req, res) => apiKeyController.generateApiKey(req, res));
+app.get('/api/api-keys/status', requireServices, requireAuth, requireAdmin, (req, res) => apiKeyController.getApiKeyStatus(req, res));
 
 // Company APIs
 /**
@@ -322,23 +351,33 @@ app.get('/api/api-keys/status', requireServices, requireAuth, (req, res) => apiK
 app.get('/api/company/analytics', requireServices, requireAuth, (req, res) => companyController.getAnalytics(req, res));
 
 // Database Tool Configuration APIs
-app.post('/api/database-tools/config', requireServices, requireAuth, (req, res) => databaseToolConfigController.createConfig(req, res));
-app.get('/api/database-tools/config', requireServices, requireAuth, (req, res) => databaseToolConfigController.getConfig(req, res));
-app.put('/api/database-tools/config/:configId', requireServices, requireAuth, (req, res) => databaseToolConfigController.updateConfig(req, res));
-app.delete('/api/database-tools/config/:configId', requireServices, requireAuth, (req, res) => databaseToolConfigController.deleteConfig(req, res));
-app.post('/api/database-tools/validate', requireServices, requireAuth, (req, res) => databaseToolConfigController.validateConnection(req, res));
-app.post('/api/database-tools/tables', requireServices, requireAuth, (req, res) => databaseToolConfigController.getTables(req, res));
-app.post('/api/database-tools/tables/:tableName/schema', requireServices, requireAuth, (req, res) => databaseToolConfigController.getTableSchema(req, res));
-app.get('/api/database-tools/config/:configId/tables', requireServices, requireAuth, (req, res) => databaseToolConfigController.getTablesFromConfig(req, res));
-app.get('/api/database-tools/config/:configId/tables/:tableName/schema', requireServices, requireAuth, (req, res) => databaseToolConfigController.getTableSchemaFromConfig(req, res));
-app.post('/api/database-tools/tools', requireServices, requireAuth, (req, res) => databaseToolConfigController.createTool(req, res));
-app.get('/api/database-tools/tools', requireServices, requireAuth, (req, res) => databaseToolConfigController.getTools(req, res));
-app.put('/api/database-tools/tools/:toolId', requireServices, requireAuth, (req, res) => databaseToolConfigController.updateTool(req, res));
-app.delete('/api/database-tools/tools/:toolId', requireServices, requireAuth, (req, res) => databaseToolConfigController.deleteTool(req, res));
+app.post('/api/database-tools/config', requireServices, requireAuth, requireAdmin, (req, res) => databaseToolConfigController.createConfig(req, res));
+app.get('/api/database-tools/config', requireServices, requireAuth, requireAdmin, (req, res) => databaseToolConfigController.getConfig(req, res));
+app.put('/api/database-tools/config/:configId', requireServices, requireAuth, requireAdmin, (req, res) => databaseToolConfigController.updateConfig(req, res));
+app.delete('/api/database-tools/config/:configId', requireServices, requireAuth, requireAdmin, (req, res) => databaseToolConfigController.deleteConfig(req, res));
+app.post('/api/database-tools/validate', requireServices, requireAuth, requireAdmin, (req, res) => databaseToolConfigController.validateConnection(req, res));
+app.post('/api/database-tools/tables', requireServices, requireAuth, requireAdmin, (req, res) => databaseToolConfigController.getTables(req, res));
+app.post('/api/database-tools/tables/:tableName/schema', requireServices, requireAuth, requireAdmin, (req, res) => databaseToolConfigController.getTableSchema(req, res));
+app.get('/api/database-tools/config/:configId/tables', requireServices, requireAuth, requireAdmin, (req, res) => databaseToolConfigController.getTablesFromConfig(req, res));
+app.get('/api/database-tools/config/:configId/tables/:tableName/schema', requireServices, requireAuth, requireAdmin, (req, res) => databaseToolConfigController.getTableSchemaFromConfig(req, res));
+app.post('/api/database-tools/tools', requireServices, requireAuth, requireAdmin, (req, res) => databaseToolConfigController.createTool(req, res));
+app.get('/api/database-tools/tools', requireServices, requireAuth, requireAdmin, (req, res) => databaseToolConfigController.getTools(req, res));
+app.put('/api/database-tools/tools/:toolId', requireServices, requireAuth, requireAdmin, (req, res) => databaseToolConfigController.updateTool(req, res));
+app.delete('/api/database-tools/tools/:toolId', requireServices, requireAuth, requireAdmin, (req, res) => databaseToolConfigController.deleteTool(req, res));
 
 // AI Settings APIs
-app.get('/api/companies/:companyUuid/ai-settings', requireServices, requireAuth, (req, res) => aiSettingsController.getSettings(req, res));
-app.put('/api/companies/:companyUuid/ai-settings', requireServices, requireAuth, (req, res) => aiSettingsController.updateSettings(req, res));
+app.get('/api/companies/:companyUuid/ai-settings', requireServices, requireAuth, requireAdmin, (req, res) => aiSettingsController.getSettings(req, res));
+app.put('/api/companies/:companyUuid/ai-settings', requireServices, requireAuth, requireAdmin, (req, res) => aiSettingsController.updateSettings(req, res));
+
+// Team Management APIs
+app.post('/api/companies/:companyUuid/team', requireServices, requireAuth, requireAdmin, (req, res) => teamController.createTeamMember(req, res));
+app.get('/api/companies/:companyUuid/team', requireServices, requireAuth, (req, res) => teamController.getTeamMembers(req, res));
+app.put('/api/companies/:companyUuid/team/:userUuid', requireServices, requireAuth, requireAdmin, (req, res) => teamController.updateTeamMember(req, res));
+app.delete('/api/companies/:companyUuid/team/:userUuid', requireServices, requireAuth, requireAdmin, (req, res) => teamController.deleteTeamMember(req, res));
+
+// Account Management APIs (for all authenticated users)
+app.get('/api/account/profile', requireServices, requireAuth, (req, res) => accountController.getProfile(req, res));
+app.put('/api/account/profile', requireServices, requireAuth, (req, res) => accountController.updateProfile(req, res));
 
 // Conversation APIs (Public - No Authentication Required for Widget)
 app.post('/api/conversations', requireServices, (req, res) => chatController.createConversation(req, res));
@@ -348,19 +387,19 @@ app.get('/api/conversations/:uuid', requireServices, requireAuth, (req, res) =>
 app.get('/api/conversations/:uuid/messages', requireServices, requireAuth, (req, res) =>
   (chatController as any).getConversationMessages(req, res)
 );
-app.post('/api/conversations/:uuid/join', requireServices, requireAuth, (req, res) =>
+app.post('/api/conversations/:uuid/join', requireServices, requireAuth, requireAdmin, (req, res) =>
   (chatController as any).joinConversation(req, res)
 );
-app.post('/api/conversations/:uuid/messages/agent', requireServices, requireAuth, (req, res) =>
+app.post('/api/conversations/:uuid/messages/agent', requireServices, requireAuth, requireAdmin, (req, res) =>
   (chatController as any).sendAgentMessage(req, res)
 );
-app.post('/api/conversations/:uuid/close', requireServices, requireAuth, (req, res) =>
+app.post('/api/conversations/:uuid/close', requireServices, requireAuth, requireAdmin, (req, res) =>
   (chatController as any).closeConversation(req, res)
 );
-app.post('/api/conversations/:uuid/archive', requireServices, requireAuth, (req, res) =>
+app.post('/api/conversations/:uuid/archive', requireServices, requireAuth, requireAdmin, (req, res) =>
   (chatController as any).archiveConversation(req, res)
 );
-app.delete('/api/conversations/:uuid', requireServices, requireAuth, (req, res) => chatController.deleteConversation(req, res));
+app.delete('/api/conversations/:uuid', requireServices, requireAuth, requireAdmin, (req, res) => chatController.deleteConversation(req, res));
 
 // Message APIs (Public - No Authentication Required for Widget)
 app.post('/api/conversations/:uuid/messages', requireServices, (req, res) => chatController.createUserMessage(req, res));
@@ -379,8 +418,8 @@ app.get('/api/knowledge/items', requireServices, requireAuth, (req, res) => know
 app.post('/api/knowledge/search', requireServices, requireUserOrApiKey, (req, res) => knowledgeController.search(req, res));
 app.post('/api/search', requireServices, requireUserOrApiKey, (req, res) => knowledgeController.ragSearch(req, res));
 app.get('/api/knowledge/items/:uuid', requireServices, requireAuth, (req, res) => knowledgeController.getItem(req, res));
-app.put('/api/knowledge/items/:uuid', requireServices, requireAuth, (req, res) => knowledgeController.updateItem(req, res));
-app.delete('/api/knowledge/items/:uuid', requireServices, requireAuth, (req, res) => knowledgeController.deleteItem(req, res));
+app.put('/api/knowledge/items/:uuid', requireServices, requireAuth, requireAdmin, (req, res) => knowledgeController.updateItem(req, res));
+app.delete('/api/knowledge/items/:uuid', requireServices, requireAuth, requireAdmin, (req, res) => knowledgeController.deleteItem(req, res));
 
 // Citation API (Public - no auth required for widget access)
 // Swagger docs are in server.ts - swagger-jsdoc picks them up from there

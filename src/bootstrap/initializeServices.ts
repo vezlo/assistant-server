@@ -22,6 +22,9 @@ import { DatabaseToolConfigService } from '../services/DatabaseToolConfigService
 import { DatabaseToolConfigController } from '../controllers/DatabaseToolConfigController';
 import { AISettingsService } from '../services/AISettingsService';
 import { AISettingsController } from '../controllers/AISettingsController';
+import { TeamService } from '../services/TeamService';
+import { TeamController } from '../controllers/TeamController';
+import { AccountController } from '../controllers/AccountController';
 
 export interface ServiceInitOptions {
   supabase: SupabaseClient;
@@ -45,6 +48,7 @@ export interface InitializedCoreServices {
     databaseToolService: any;
     databaseToolConfigService: DatabaseToolConfigService;
     aiSettingsService: AISettingsService;
+    teamService: TeamService;
   };
   controllers: {
     chatController: ChatController;
@@ -55,6 +59,8 @@ export interface InitializedCoreServices {
     slackController: SlackController;
     databaseToolConfigController: DatabaseToolConfigController;
     aiSettingsController: AISettingsController;
+    teamController: TeamController;
+    accountController: AccountController;
   };
   config: {
     chatHistoryLength: number;
@@ -199,6 +205,15 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
   // Initialize Database Tool Config controller (pass both services for cache management)
   const databaseToolConfigController = new DatabaseToolConfigController(databaseToolConfigService, databaseToolService);
 
+  // Initialize Team service and controller
+  const teamService = new TeamService(supabase);
+  const teamController = new TeamController(teamService, supabase);
+  logger.info('✅ Team service initialized');
+
+  // Initialize Account controller (uses TeamService for self-updates)
+  const accountController = new AccountController(teamService, supabase);
+  logger.info('✅ Account controller initialized');
+
   return {
     services: {
       storage,
@@ -212,7 +227,8 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
       databaseToolService,
       validationService,
       databaseToolConfigService,
-      aiSettingsService
+      aiSettingsService,
+      teamService
     },
     controllers: {
       chatController,
@@ -222,7 +238,9 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
       companyController,
       slackController,
       databaseToolConfigController,
-      aiSettingsController
+      aiSettingsController,
+      teamController,
+      accountController
     },
     config: {
       chatHistoryLength: resolvedHistoryLength
