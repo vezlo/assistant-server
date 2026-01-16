@@ -96,6 +96,7 @@ export interface StoredChatMessage {
   toolCalls?: any;
   toolResults?: DatabaseSearchResult[];
   authorId?: number;
+  authorName?: string;
   createdAt: Date;
   updatedAt?: Date;
 }

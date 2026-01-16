@@ -705,7 +705,8 @@ Provide a natural, friendly response to the user's question using this data.`
           content: msg.content,
           status: 'completed',
           created_at: toIso(msg.createdAt),
-          author_id: msg.authorId ?? null
+          author_id: msg.authorId ?? null,
+          author_name: msg.authorName ?? null
         })),
         pagination: {
           page,
@@ -790,6 +791,7 @@ Provide a natural, friendly response to the user's question using this data.`
                   content: systemMessage.content,
                   type: systemMessage.role,
                   author_id: systemMessage.authorId,
+                  author_name: req.user.name || null,
                   created_at: systemMessage.createdAt.toISOString()
                 },
                 conversation_update: {
@@ -889,6 +891,7 @@ Provide a natural, friendly response to the user's question using this data.`
                   content: systemMessage.content,
                   type: systemMessage.role,
                   author_id: systemMessage.authorId,
+                  author_name: req.user.name || null,
                   created_at: systemMessage.createdAt.toISOString()
                 },
                 conversation_update: {
@@ -913,6 +916,7 @@ Provide a natural, friendly response to the user's question using this data.`
           content: systemMessage.content,
           type: systemMessage.role,
           author_id: systemMessage.authorId,
+          author_name: req.user.name || null,
           created_at: systemMessage.createdAt.toISOString()
         }
       });
@@ -1071,6 +1075,7 @@ Provide a natural, friendly response to the user's question using this data.`
                   content: agentMessage.content,
                   type: agentMessage.role,
                   author_id: agentMessage.authorId,
+                  author_name: req.user.name || null,
                   created_at: agentMessage.createdAt.toISOString()
                 },
                 conversation_update: {
@@ -1090,6 +1095,7 @@ Provide a natural, friendly response to the user's question using this data.`
         content: agentMessage.content,
         type: agentMessage.role,
         author_id: agentMessage.authorId,
+        author_name: req.user.name || null,
         created_at: agentMessage.createdAt.toISOString()
       });
 

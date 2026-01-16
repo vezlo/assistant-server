@@ -78,6 +78,7 @@ export class MessageRepository {
           type: message.role,
           content: message.content,
           metadata: { tool_calls: message.toolCalls, tool_results: message.toolResults },
+          author_id: message.authorId || null,
           created_at: message.createdAt.toISOString()
         })
         .select()
@@ -125,7 +126,12 @@ export class MessageRepository {
 
     let query = this.supabase
       .from(tableName)
-      .select('*')
+      .select(`
+        *,
+        vezlo_users:author_id (
+          name
+        )
+      `)
       .eq('conversation_id', conversationQuery.data.id);
 
     // Filter by message types if specified
@@ -141,6 +147,7 @@ export class MessageRepository {
 
     return (data || []).map(row => {
       const metadata = row.metadata || {};
+      const author = row.vezlo_users as { name: string } | null;
       return {
         id: row.uuid,
         conversationId: conversationId,
@@ -150,6 +157,8 @@ export class MessageRepository {
         toolCalls: metadata.tool_calls,
         toolResults: metadata.tool_results,
         parentMessageId: row.parent_message_id,
+        authorId: row.author_id || undefined,
+        authorName: author?.name || undefined,
         createdAt: new Date(row.created_at),
         updatedAt: row.updated_at ? new Date(row.updated_at) : undefined
       };
