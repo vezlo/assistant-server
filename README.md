@@ -458,6 +458,20 @@ npm run migrate:make add_users_table
 - `POST /api/feedback` - Submit message feedback (Public API)
 - `DELETE /api/feedback/:uuid` - Delete/undo message feedback (Public API)
 
+#### API Keys (Admin Only)
+- `POST /api/api-keys` - Generate or update company API key
+- `GET /api/api-keys/status` - Check if API key exists for company
+
+#### Team Management (Admin Only)
+- `POST /api/companies/:companyUuid/team` - Create team member
+- `GET /api/companies/:companyUuid/team` - List team members (with pagination and search)
+- `PUT /api/companies/:companyUuid/team/:userUuid` - Update team member (name, role, status, password)
+- `DELETE /api/companies/:companyUuid/team/:userUuid` - Remove team member
+
+#### Account Settings
+- `GET /api/account/profile` - Get current user's profile
+- `PUT /api/account/profile` - Update current user's name and password
+
 ### WebSocket Events
 - `join-conversation` - Join conversation room
 - `conversation:message` - Real-time message updates
@@ -748,4 +762,4 @@ This project is dual-licensed:
 
 ---
 
-**Status**: ✅ Production Ready | **Version**: 2.12.0 | **Node.js**: 20+ | **TypeScript**: 5+
+**Status**: ✅ Production Ready | **Version**: 2.13.0 | **Node.js**: 20+ | **TypeScript**: 5+

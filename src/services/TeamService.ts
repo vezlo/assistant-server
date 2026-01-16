@@ -22,7 +22,7 @@ export interface CreateTeamMemberInput {
 
 export interface UpdateTeamMemberInput {
   name?: string;
-  role?: 'admin' | 'user' | 'viewer';
+  role?: 'admin' | 'user';
   status?: 'active' | 'inactive';
   password?: string;
 }

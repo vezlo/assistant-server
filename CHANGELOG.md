@@ -1,3 +1,15 @@
+## [2.13.0] - 2026-01-15
+
+### Added
+- **API Keys Management**: Generate and manage company API keys (admin-only)
+- **Team Management**: Create, update, delete team members with role-based access control
+- **Account Settings**: Self-service profile management (name and password updates)
+- API endpoints: `/api/api-keys`, `/api/companies/:companyUuid/team`, `/api/account/profile`
+- Role-based restrictions: Admins cannot change other admins' passwords or delete themselves
+
+### Changed
+- Removed 'viewer' role from system (only 'admin' and 'user' roles supported)
+
 ## [2.12.0] - 2026-01-15
 
 ### Added
