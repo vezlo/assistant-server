@@ -129,8 +129,8 @@ async function initializeServices() {
     slackController = controllers.slackController;
     databaseToolConfigController = controllers.databaseToolConfigController;
     aiSettingsController = controllers.aiSettingsController;
-    teamController = controllers.teamController;
-    accountController = controllers.accountController;
+    teamController = (controllers as any).teamController;
+    accountController = (controllers as any).accountController;
 
     servicesInitialized = true;
     logger.info('All services initialized successfully');
@@ -248,29 +248,6 @@ const requireServices = async (_req: any, res: any, next: any) => {
 const requireAuth = (req: any, res: any, next: any) => {
   const authMiddleware = authenticateUser(supabase);
   authMiddleware(req, res, next);
-};
-
-const requireAdmin = async (req: any, res: any, next: any) => {
-  try {
-    // First authenticate user
-    const authMiddleware = authenticateUser(supabase);
-    await new Promise<void>((resolve, reject) => {
-      authMiddleware(req, res, (err?: any) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
-
-    // Then check admin role
-    if (!req.profile || req.profile.role !== 'admin') {
-      res.status(403).json({ error: 'Admin access required' });
-      return;
-    }
-
-    next();
-  } catch (error) {
-    res.status(401).json({ error: 'Authentication failed' });
-  }
 };
 
 // Helper function for routes that accept both JWT and API key
