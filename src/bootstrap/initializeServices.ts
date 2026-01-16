@@ -236,11 +236,11 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
       authController,
       apiKeyController,
       companyController,
-      slackController,
-      databaseToolConfigController,
-      aiSettingsController,
-      teamController,
-      accountController
+    slackController,
+    databaseToolConfigController,
+    aiSettingsController,
+    teamController,
+    accountController
     },
     config: {
       chatHistoryLength: resolvedHistoryLength

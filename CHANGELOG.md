@@ -1,4 +1,4 @@
-## [2.12.0] - 2026-01-13
+## [2.12.0] - 2026-01-15
 
 ### Added
 - **AI Settings**: Customizable AI behavior per company (personality, response guidelines, interaction etiquette, scope of assistance, formatting)

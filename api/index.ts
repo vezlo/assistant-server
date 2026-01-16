@@ -32,6 +32,7 @@ import { ApiKeyController } from '../dist/src/controllers/ApiKeyController';
 import { CompanyController } from '../dist/src/controllers/CompanyController';
 import { SlackController } from '../dist/src/controllers/SlackController';
 import { TeamController } from '../dist/src/controllers/TeamController';
+import { AccountController } from '../dist/src/controllers/AccountController';
 import { RealtimePublisher } from '../dist/src/services/RealtimePublisher';
 
 // Load environment variables

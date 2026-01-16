@@ -946,7 +946,7 @@ app.post('/api/api-keys', authenticateUser(supabase), requireAdmin, (req, res) =
     aiSettingsController.updateSettings(req, res)
   );
 
-// Team Management API Routes
+  // Team Management API Routes
 /**
  * @swagger
  * /api/companies/{companyUuid}/team:
@@ -1179,7 +1179,7 @@ app.post('/api/api-keys', authenticateUser(supabase), requireAdmin, (req, res) =
     accountController.updateProfile(req, res)
   );
 
-// Chat API Routes
+  // Chat API Routes
 /**
  * @swagger
  * /api/conversations:
