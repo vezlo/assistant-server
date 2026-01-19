@@ -1,4 +1,4 @@
-## [2.13.0] - 2026-01-15
+## [2.13.0] - 2026-01-19
 
 ### Added
 - **API Keys Management**: Generate and manage company API keys (admin-only)

@@ -68,16 +68,11 @@ export class AISettingsController {
         return;
       }
 
-      // Verify user has access to this company and is admin
-      if (req.profile?.companyUuid !== companyUuid) {
+      // requireAdmin middleware ensures req.profile exists and role is admin
+      // Verify user has access to this company
+      if (req.profile!.companyUuid !== companyUuid) {
         logger.warn(`Unauthorized access attempt to update AI settings for company: ${companyUuid}`);
         res.status(403).json({ error: 'Unauthorized access to this company\'s settings' });
-        return;
-      }
-
-      if (req.profile?.role !== 'admin') {
-        logger.warn(`Non-admin user attempted to update AI settings: ${req.user?.uuid}`);
-        res.status(403).json({ error: 'Only admins can update AI settings' });
         return;
       }
 

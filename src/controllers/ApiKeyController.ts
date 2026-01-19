@@ -17,24 +17,8 @@ export class ApiKeyController {
    */
   async generateApiKey(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      if (!req.profile) {
-        res.status(401).json({ 
-          success: false,
-          error: 'Not authenticated' 
-        });
-        return;
-      }
-
-      // Check if user is an admin
-      if (req.profile.role !== 'admin') {
-        res.status(403).json({ 
-          success: false,
-          error: 'Only admin users can generate API keys' 
-        });
-        return;
-      }
-
-      const companyId = parseInt(req.profile.companyId);
+      // requireAdmin middleware ensures req.profile exists and role is admin
+      const companyId = parseInt(req.profile!.companyId);
       const result = await this.apiKeyService.generateApiKey(companyId);
 
       res.status(200).json({
@@ -58,15 +42,8 @@ export class ApiKeyController {
    */
   async getApiKeyStatus(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      if (!req.profile) {
-        res.status(401).json({ 
-          success: false,
-          error: 'Not authenticated' 
-        });
-        return;
-      }
-
-      const companyId = parseInt(req.profile.companyId);
+      // requireAdmin middleware ensures req.profile exists and role is admin
+      const companyId = parseInt(req.profile!.companyId);
       const status = await this.apiKeyService.getApiKeyStatus(companyId);
 
       res.status(200).json({
