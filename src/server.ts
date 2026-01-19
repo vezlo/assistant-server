@@ -18,6 +18,7 @@ import { AuthController } from './controllers/AuthController';
 import { ApiKeyController } from './controllers/ApiKeyController';
 import { CompanyController } from './controllers/CompanyController';
 import { SlackController } from './controllers/SlackController';
+import { GenerateKeyController } from './controllers/GenerateKeyController';
 import { runMigrations, getMigrationStatus } from './config/knex';
 import { createClient } from '@supabase/supabase-js';
 import { initializeCoreServices } from './bootstrap/initializeServices';
@@ -97,6 +98,7 @@ let databaseToolConfigController: any;
 let aiSettingsController: any;
 let teamController: any;
 let accountController: any;
+let generateKeyController: GenerateKeyController;
 
 async function initializeServices() {
   try {
@@ -119,6 +121,7 @@ async function initializeServices() {
     aiSettingsController = controllers.aiSettingsController;
     teamController = controllers.teamController;
     accountController = controllers.accountController;
+    generateKeyController = new GenerateKeyController(supabase);
 
     logger.info('All services initialized successfully');
   } catch (error) {
@@ -2309,123 +2312,7 @@ app.put('/api/knowledge/items/:uuid', authenticateUser(supabase), requireAdmin, 
    *         description: Failed to generate API key
    */
   app.post('/api/generate-key', asyncHandler(async (req: any, res: any) => {
-    try {
-      const authHeader = req.headers.authorization;
-      const migrationKey = req.query.key;
-
-      // Check for Bearer token first (frontend/admin access)
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        // Use authenticateUser middleware logic
-        const token = authHeader.substring(7);
-        const { JWTUtils } = await import('./middleware/auth');
-        const decoded = JWTUtils.verifyToken(token);
-
-        const { data: user } = await supabase
-          .from('vezlo_users')
-          .select('*')
-          .eq('id', decoded.user_id)
-          .single();
-
-        if (!user || user.token_updated_at !== decoded.user_token_updated_at) {
-          res.status(401).json({
-            success: false,
-            message: 'Invalid or expired token',
-            error: 'UNAUTHORIZED'
-          });
-          return;
-        }
-
-        const { data: profile } = await supabase
-          .from('vezlo_user_company_profiles')
-          .select(`
-            role,
-            company_id,
-            companies:company_id(
-              id,
-              name
-            )
-          `)
-          .eq('user_id', user.id)
-          .eq('id', decoded.user_company_profile_id)
-          .single();
-
-        if (!profile || profile.role !== 'admin') {
-          res.status(403).json({
-            success: false,
-            message: 'Only admin users can generate API keys',
-            error: 'FORBIDDEN'
-          });
-          return;
-        }
-
-        const companyId = parseInt(profile.company_id);
-        const { ApiKeyService } = await import('./services/ApiKeyService');
-        const apiKeyService = new ApiKeyService(supabase);
-        const result = await apiKeyService.generateApiKey(companyId);
-
-        const companyName = (profile.companies as any)?.name || 'Unknown Company';
-
-        res.status(200).json({
-          success: true,
-          message: 'API key generated successfully',
-          api_key_details: {
-            uuid: result.uuid,
-            company_name: companyName,
-            user_name: user.name,
-            api_key: result.apiKey
-          }
-        });
-        return;
-      }
-
-      // Fallback to migration key (Vercel deployment)
-      if (!migrationKey) {
-        res.status(401).json({
-          success: false,
-          message: 'No authentication provided',
-          error: 'UNAUTHORIZED'
-        });
-        return;
-      }
-
-      const { MigrationService } = await import('./services/MigrationService');
-      const keyValid = MigrationService.validateApiKey(migrationKey);
-      
-      if (!keyValid) {
-        res.status(401).json({
-          success: false,
-          message: 'Invalid or missing migration API key',
-          error: 'UNAUTHORIZED'
-        });
-        return;
-      }
-
-      const setupSupabase = createClient(
-        process.env.SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_KEY!
-      );
-
-      const { SetupService } = await import('./services/SetupService');
-      const setupService = new SetupService(setupSupabase);
-      const response = await setupService.executeGenerateKey();
-
-      res.status(200).json({
-        success: true,
-        message: 'API key generated successfully',
-        api_key_details: response
-      });
-
-    } catch (error: any) {
-      logger.error('Generate key failed:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to generate API key',
-        error: error.message || 'GENERATE_KEY_FAILED',
-        details: {
-          error: error.message
-        }
-      });
-    }
+    await generateKeyController.generateKey(req, res);
   }));
 
   // Slack Integration Routes
