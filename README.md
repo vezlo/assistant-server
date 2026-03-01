@@ -406,7 +406,10 @@ http://localhost:3000/api
 
 #### Messages
 - `POST /api/conversations/:uuid/messages` - Create user message
-- `POST /api/messages/:uuid/generate` - Generate AI response
+- `POST /api/messages/:uuid/generate` - Generate AI response (accepts optional `technical_depth` 1-5)
+
+#### Technical Depth
+- `GET /api/depth-levels` - List available technical depth levels (public, no auth)
 
 #### Knowledge Base
 - `POST /api/knowledge/items` - Create knowledge item (supports raw content, pre-chunked data, or chunks with embeddings)
@@ -530,6 +533,53 @@ curl -X POST /api/messages/msg456/generate \
   -d '{}'
 # Response: {"uuid": "msg789", "content": "To integrate our API...", ...}
 ```
+
+## 🎚️ Technical Depth Scale
+
+Control how technical the assistant's responses are with a single integer parameter (1-5). This replaces the binary `DEVELOPER_MODE` and provides granular control.
+
+| Level | Audience | Code Snippets | Response Style |
+|-------|----------|---------------|----------------|
+| 1 | Executive / Sales | Never | Business language, impact-focused |
+| 2 | Support / Product | Never | User-facing behavior, simplified terms |
+| 3 | Mixed / General | Minimal | Balanced (default) |
+| 4 | Technical / QA | Yes | Implementation details, code references |
+| 5 | Developer | Full | Deep dive with code, paths, commands |
+
+### Configuration Priority (highest wins)
+
+1. **Per-request** - Pass `technical_depth` in `POST /api/messages/:uuid/generate` body
+2. **Per-conversation** - Set `technical_depth` when creating a conversation
+3. **Company default** - Set via `PUT /api/companies/:companyUuid/ai-settings`
+4. **DEVELOPER_MODE fallback** - `true` maps to 5, `false` maps to 2
+5. **Global default** - 3 (or `TECHNICAL_DEPTH_DEFAULT` env var)
+
+### Usage Examples
+
+```bash
+# Create conversation with depth level
+curl -X POST /api/conversations \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Executive Brief", "technical_depth": 1}'
+
+# Override depth per-request
+curl -X POST /api/messages/$MSG_UUID/generate \
+  -H "Content-Type: application/json" \
+  -d '{"technical_depth": 5}'
+
+# Set company default
+curl -X PUT /api/companies/$COMPANY_UUID/ai-settings \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"technical_depth": 3}'
+
+# List available levels
+curl /api/depth-levels
+```
+
+### Backward Compatibility
+
+`DEVELOPER_MODE` continues to work as a fallback when `technical_depth` is not configured at any level. Setting `technical_depth` at any level takes precedence.
 
 ## 🗄️ Database Setup
 

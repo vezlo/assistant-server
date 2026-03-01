@@ -66,6 +66,21 @@ export interface NavigationLink {
   category?: string;
 }
 
+/** Technical depth level: 1 (Executive) to 5 (Developer) */
+export type TechnicalDepthLevel = 1 | 2 | 3 | 4 | 5;
+
+export interface DepthLevelInfo {
+  level: TechnicalDepthLevel;
+  name: string;
+  description: string;
+}
+
+export interface DepthResolutionContext {
+  requestDepth?: number;
+  conversationUuid?: string;
+  companyUuid: string;
+}
+
 export interface ChatConversation {
   id?: string;
   threadId: string;
@@ -84,6 +99,7 @@ export interface ChatConversation {
   slack_channel_id?: string;
   slack_thread_ts?: string;
   status?: string;
+  technical_depth?: number | null;
 }
 
 export interface StoredChatMessage {

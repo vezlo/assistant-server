@@ -32,6 +32,7 @@ export class ConversationRepository {
       // Include Slack fields if present
       if (conversation.slack_channel_id !== undefined) updateData.slack_channel_id = conversation.slack_channel_id;
       if (conversation.slack_thread_ts !== undefined) updateData.slack_thread_ts = conversation.slack_thread_ts;
+      if (conversation.technical_depth !== undefined) updateData.technical_depth = conversation.technical_depth;
 
       const { data, error } = await this.supabase
         .from(tableName)
@@ -47,7 +48,7 @@ export class ConversationRepository {
       // Convert string IDs to integers (dummy IDs for now)
       const companyId = conversation.organizationId ? parseInt(conversation.organizationId) || 1 : 1;
       const creatorId = parseInt(conversation.userId) || 1;
-      
+
       const insertData: any = {
         company_id: companyId,
         title: conversation.title || 'New Conversation',
@@ -61,6 +62,7 @@ export class ConversationRepository {
       // Include Slack fields if present
       if (conversation.slack_channel_id) insertData.slack_channel_id = conversation.slack_channel_id;
       if (conversation.slack_thread_ts) insertData.slack_thread_ts = conversation.slack_thread_ts;
+      if (conversation.technical_depth != null) insertData.technical_depth = conversation.technical_depth;
 
       const { data, error } = await this.supabase
         .from(tableName)
@@ -102,6 +104,7 @@ export class ConversationRepository {
     if (updates.respondedAt !== undefined) updateData.responded_at = updates.respondedAt instanceof Date ? updates.respondedAt.toISOString() : updates.respondedAt;
     if (updates.closedAt !== undefined) updateData.closed_at = updates.closedAt instanceof Date ? updates.closedAt.toISOString() : updates.closedAt;
     if (updates.archivedAt !== undefined) updateData.archived_at = updates.archivedAt instanceof Date ? updates.archivedAt.toISOString() : updates.archivedAt;
+    if (updates.technical_depth !== undefined) updateData.technical_depth = updates.technical_depth;
     updateData.updated_at = new Date().toISOString();
 
     const { data, error } = await this.supabase
@@ -233,7 +236,8 @@ export class ConversationRepository {
       archivedAt: row.archived_at ? new Date(row.archived_at) : undefined,
       lastMessageAt: row.last_message_at ? new Date(row.last_message_at) : undefined,
       slack_channel_id: row.slack_channel_id,
-      slack_thread_ts: row.slack_thread_ts
+      slack_thread_ts: row.slack_thread_ts,
+      technical_depth: row.technical_depth ?? null
     };
   }
 }

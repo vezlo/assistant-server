@@ -19,7 +19,8 @@ export const MessageSchemas = {
     type: 'object',
     properties: {
       regenerate: { type: 'boolean', description: 'Whether to regenerate the response', default: false },
-      context: { type: 'object', description: 'Additional context for generation' }
+      context: { type: 'object', description: 'Additional context for generation' },
+      technical_depth: { type: 'integer', minimum: 1, maximum: 5, description: 'Technical depth level (1=Executive, 2=Support, 3=General, 4=Technical, 5=Developer). Overrides conversation and company defaults.' }
     }
   },
 

@@ -181,6 +181,48 @@ function setupRoutes() {
 
   /**
    * @swagger
+   * /api/depth-levels:
+   *   get:
+   *     summary: Get technical depth levels
+   *     description: Returns available technical depth levels and their descriptions (Public - no auth required)
+   *     tags: [AI Settings]
+   *     responses:
+   *       200:
+   *         description: Depth levels retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 levels:
+   *                   type: array
+   *                   items:
+   *                     type: object
+   *                     properties:
+   *                       level:
+   *                         type: integer
+   *                       name:
+   *                         type: string
+   *                       description:
+   *                         type: string
+   *                 default:
+   *                   type: integer
+   */
+  app.get('/api/depth-levels', (_req, res) => {
+    res.json({
+      levels: [
+        { level: 1, name: 'Executive', description: 'High-level business summaries without technical detail' },
+        { level: 2, name: 'Support', description: 'User-facing behavior descriptions with simplified terms' },
+        { level: 3, name: 'General', description: 'Balanced responses for mixed technical audiences' },
+        { level: 4, name: 'Technical', description: 'Detailed explanations with code references' },
+        { level: 5, name: 'Developer', description: 'Full implementation detail with code, paths, and commands' }
+      ],
+      default: 3
+    });
+  });
+
+  /**
+   * @swagger
    * /api/auth/login:
  *   post:
  *     summary: User login
@@ -913,6 +955,11 @@ app.post('/api/api-keys', authenticateUser(supabase), requireAdmin, (req, res) =
    *               top_k:
    *                 type: number
    *                 nullable: true
+   *               technical_depth:
+   *                 type: integer
+   *                 minimum: 1
+   *                 maximum: 5
+   *                 description: "Company default technical depth level (1=Executive, 2=Support, 3=General, 4=Technical, 5=Developer)"
    *               prompts:
    *                 type: object
    *                 properties:
@@ -1239,14 +1286,24 @@ app.get('/api/conversations', authenticateUser(supabase), (req, res) =>
  * /api/conversations:
  *   post:
  *     summary: Create a new conversation
- *     description: Create a new conversation (Public API - No authentication required)
+ *     description: Create a new conversation (Public API - No authentication required). Optionally set a technical_depth level for the conversation.
  *     tags: [Chat]
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/CreateConversationRequest'
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 description: Conversation title
+ *                 default: New Conversation
+ *               technical_depth:
+ *                 type: integer
+ *                 minimum: 1
+ *                 maximum: 5
+ *                 description: "Technical depth level for this conversation (1=Executive, 2=Support, 3=General, 4=Technical, 5=Developer). Nullable means inherit from company default."
  *     responses:
  *       201:
  *         description: Conversation created successfully
@@ -1255,7 +1312,7 @@ app.get('/api/conversations', authenticateUser(supabase), (req, res) =>
  *             schema:
  *               $ref: '#/components/schemas/CreateConversationResponse'
  *       400:
- *         description: Invalid request
+ *         description: Invalid request (e.g., technical_depth outside 1-5)
  *       500:
  *         description: Internal server error
  */
@@ -1620,7 +1677,7 @@ app.post('/api/conversations/:uuid/messages', (req, res) => chatController.creat
  * /api/messages/{uuid}/generate:
  *   post:
  *     summary: Generate AI response
- *     description: Generate an AI response for a specific message (Public API - No authentication required)
+ *     description: Generate an AI response for a specific message (Public API - No authentication required). Optionally pass technical_depth (1-5) to control the technical detail level of the response.
  *     tags: [Chat]
  *     parameters:
  *       - in: path
@@ -1629,6 +1686,18 @@ app.post('/api/conversations/:uuid/messages', (req, res) => chatController.creat
  *         schema:
  *           type: string
  *         description: Message UUID
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               technical_depth:
+ *                 type: integer
+ *                 minimum: 1
+ *                 maximum: 5
+ *                 description: "Technical depth level (1=Executive, 2=Support, 3=General, 4=Technical, 5=Developer). Overrides conversation and company defaults."
  *     responses:
  *       200:
  *         description: AI response generated successfully
@@ -1637,7 +1706,7 @@ app.post('/api/conversations/:uuid/messages', (req, res) => chatController.creat
  *             schema:
  *               $ref: '#/components/schemas/GenerateResponseResponse'
  *       400:
- *         description: Invalid request
+ *         description: Invalid request (e.g., technical_depth outside 1-5)
  *       404:
  *         description: Message not found
  *       500:

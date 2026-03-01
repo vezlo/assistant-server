@@ -17,6 +17,7 @@ export interface AISettings {
   max_tokens: number;
   top_k: number | null;
   prompts: AIPrompts;
+  technical_depth?: number;
 }
 
 export const DEFAULT_AI_SETTINGS: AISettings = {

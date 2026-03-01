@@ -10,7 +10,8 @@ export const ConversationSchemas = {
   CreateConversationRequest: {
     type: 'object',
     properties: {
-      title: { type: 'string', description: 'Conversation title', default: 'New Conversation' }
+      title: { type: 'string', description: 'Conversation title', default: 'New Conversation' },
+      technical_depth: { type: 'integer', minimum: 1, maximum: 5, nullable: true, description: 'Technical depth level for this conversation (1-5). Null means inherit from company default.' }
     }
   },
 

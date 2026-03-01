@@ -12,6 +12,7 @@ import { ResponseStreamingService } from '../services/ResponseStreamingService';
 import { ValidationService } from '../services/ValidationService';
 import { DatabaseToolService } from '../services/DatabaseToolService';
 import { AISettingsService } from '../services/AISettingsService';
+import { DepthResolverService } from '../services/depth-resolver.service';
 
 export class ChatController {
   private chatManager: ChatManager;
@@ -25,6 +26,7 @@ export class ChatController {
   private validationService?: ValidationService;
   private databaseToolService?: DatabaseToolService;
   private aiSettingsService?: AISettingsService;
+  private depthResolverService: DepthResolverService;
 
   constructor(
     chatManager: ChatManager,
@@ -42,6 +44,7 @@ export class ChatController {
     this.validationService = options.validationService;
     this.databaseToolService = options.databaseToolService;
     this.aiSettingsService = options.aiSettingsService;
+    this.depthResolverService = new DepthResolverService(supabase);
     
     // Initialize services
     const aiService = (chatManager as any).aiService;
@@ -57,7 +60,15 @@ export class ChatController {
   // Create a new conversation
   async createConversation(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const { title } = req.body;
+      const { title, technical_depth } = req.body;
+
+      // Validate technical_depth if provided
+      if (technical_depth !== undefined) {
+        if (typeof technical_depth !== 'number' || !Number.isInteger(technical_depth) || technical_depth < 1 || technical_depth > 5) {
+          res.status(400).json({ error: 'technical_depth must be an integer between 1 and 5' });
+          return;
+        }
+      }
 
       let userId: string;
       let companyId: string;
@@ -152,7 +163,8 @@ export class ChatController {
         messageCount: 0,
         createdAt: now,
         updatedAt: now,
-        lastMessageAt: now
+        lastMessageAt: now,
+        technical_depth: technical_depth ?? null
       });
 
       // Publish realtime update for new conversation
@@ -382,6 +394,32 @@ export class ChatController {
         }
       } else {
         logger.warn(`⚠️ Cannot load AI settings: aiSettingsService=${!!this.aiSettingsService}, companyUuid=${companyUuid}, companyId=${companyId}`);
+      }
+
+      // Resolve and apply technical depth
+      if (companyUuid) {
+        try {
+          const requestDepth = typeof req.body?.technical_depth === 'number' ? req.body.technical_depth : undefined;
+
+          // Validate request depth if provided
+          if (requestDepth !== undefined && (!Number.isInteger(requestDepth) || requestDepth < 1 || requestDepth > 5)) {
+            res.status(400).json({ error: 'technical_depth must be an integer between 1 and 5' });
+            return;
+          }
+
+          const resolvedDepth = await this.depthResolverService.resolveDepth({
+            requestDepth,
+            conversationUuid: conversationId,
+            companyUuid
+          });
+
+          const aiService = this.responseGenerationService.getAIService();
+          if (aiService) {
+            (aiService as any).setTechnicalDepth(resolvedDepth);
+          }
+        } catch (error) {
+          logger.warn('⚠️ Failed to resolve technical depth, using defaults:', error);
+        }
       }
 
       // Run intent classification to decide handling strategy (with dynamic tools)

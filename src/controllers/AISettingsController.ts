@@ -100,10 +100,20 @@ export class AISettingsController {
       if (settingsUpdate.model !== undefined) {
         const allowedModels = ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'];
         if (!allowedModels.includes(settingsUpdate.model)) {
-          res.status(400).json({ 
+          res.status(400).json({
             error: 'Invalid model',
             allowedModels
           });
+          return;
+        }
+      }
+
+      if (settingsUpdate.technical_depth !== undefined) {
+        if (typeof settingsUpdate.technical_depth !== 'number' ||
+            !Number.isInteger(settingsUpdate.technical_depth) ||
+            settingsUpdate.technical_depth < 1 ||
+            settingsUpdate.technical_depth > 5) {
+          res.status(400).json({ error: 'technical_depth must be an integer between 1 and 5' });
           return;
         }
       }

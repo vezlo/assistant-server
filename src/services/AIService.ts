@@ -10,6 +10,7 @@ import { KnowledgeBaseService } from './KnowledgeBaseService';
 import { DatabaseToolService } from './DatabaseToolService';
 import { PromptService, PromptContext } from './PromptService';
 import { AISettings } from '../config/defaultAISettings';
+import { buildDepthSystemPrompt } from './depth-prompt.service';
 import logger from '../config/logger';
 
 export class AIService {
@@ -21,6 +22,7 @@ export class AIService {
   private knowledgeBaseService?: KnowledgeBaseService;
   private databaseToolService?: DatabaseToolService;
   private aiSettings?: AISettings; // User-defined AI settings
+  private technicalDepthPrompt: string = ''; // Depth prompt fragment prepended to system prompt
 
   constructor(config: AIServiceConfig) {
     this.config = config;
@@ -57,6 +59,16 @@ export class AIService {
     logger.info('🎨 AI settings updated and system prompt rebuilt');
   }
 
+  /**
+   * Set the technical depth level for the next response.
+   * Builds and caches the depth prompt fragment, then rebuilds the system prompt.
+   */
+  setTechnicalDepth(level: number): void {
+    this.technicalDepthPrompt = buildDepthSystemPrompt(level);
+    this.systemPrompt = this.buildSystemPrompt();
+    logger.info(`🎚️ Technical depth set to level ${level}, system prompt rebuilt`);
+  }
+
   private buildSystemPrompt(): string {
     const orgName = this.config.organizationName || 'Your Organization';
     const assistantName = this.config.assistantName || `${orgName} AI Assistant`;
@@ -74,10 +86,17 @@ export class AIService {
     logger.info(`🔨 Building system prompt for ${assistantName}`);
 
     // Use PromptService to build system prompt with user-defined prompts
-    return PromptService.buildSystemPrompt(
+    const basePrompt = PromptService.buildSystemPrompt(
       promptContext,
       this.aiSettings?.prompts
     );
+
+    // Prepend technical depth fragment if set
+    if (this.technicalDepthPrompt) {
+      return this.technicalDepthPrompt + '\n\n' + basePrompt;
+    }
+
+    return basePrompt;
   }
 
   async generateResponse(message: string, context?: ChatContext | any): Promise<AIResponse> {

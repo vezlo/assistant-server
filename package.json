@@ -41,7 +41,9 @@
     "migrate:up": "knex migrate:up",
     "migrate:down": "knex migrate:down",
     "seed:make": "knex seed:make",
-    "seed:run": "knex seed:run"
+    "seed:run": "knex seed:run",
+    "test": "jest --config jest.config.ts",
+    "test:coverage": "jest --config jest.config.ts --coverage"
   },
   "dependencies": {
     "@slack/bolt": "^4.6.0",
@@ -71,12 +73,15 @@
     "@types/compression": "^1.7.4",
     "@types/cors": "^2.8.15",
     "@types/express": "^5.0.0",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.10.0",
     "@types/pg": "^8.10.9",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.6",
     "@types/uuid": "^9.0.6",
-    "@vercel/node": "^3.0.0",
+    "@vercel/node": "^4.0.0",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
     "typescript": "^5.2.2"
   },

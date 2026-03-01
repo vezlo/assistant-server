@@ -38,10 +38,10 @@ export class AISettingsService {
         return cached.settings;
       }
 
-      // Fetch from database
+      // Fetch from database (include technical_depth column)
       const { data, error } = await this.supabase
         .from('vezlo_ai_settings')
-        .select('settings')
+        .select('settings, technical_depth')
         .eq('company_id', await this.getCompanyIdByUuid(companyUuid))
         .single();
 
@@ -51,6 +51,9 @@ export class AISettingsService {
       }
 
       const settings = data.settings as AISettings;
+      if (data.technical_depth != null) {
+        settings.technical_depth = data.technical_depth;
+      }
 
       // Update cache
       this.cache.set(companyUuid, { settings, timestamp: Date.now() });
@@ -70,7 +73,7 @@ export class AISettingsService {
     try {
       const { data, error } = await this.supabase
         .from('vezlo_ai_settings')
-        .select('settings')
+        .select('settings, technical_depth')
         .eq('company_id', companyId)
         .single();
 
@@ -79,7 +82,11 @@ export class AISettingsService {
         return DEFAULT_AI_SETTINGS;
       }
 
-      return data.settings as AISettings;
+      const settings = data.settings as AISettings;
+      if (data.technical_depth != null) {
+        settings.technical_depth = data.technical_depth;
+      }
+      return settings;
     } catch (error) {
       logger.error('Error fetching AI settings by ID:', error);
       return DEFAULT_AI_SETTINGS;
@@ -96,25 +103,36 @@ export class AISettingsService {
       // Get current settings
       const currentSettings = await this.getSettingsByCompanyId(companyId);
 
-      // Merge with new settings
+      // Extract technical_depth if present (stored as separate column)
+      const { technical_depth, ...settingsWithoutDepth } = settings;
+
+      // Merge with new settings (excluding technical_depth which is a separate column)
       const updatedSettings: AISettings = {
         ...currentSettings,
-        ...settings,
+        ...settingsWithoutDepth,
         prompts: {
           ...currentSettings.prompts,
-          ...(settings.prompts || {})
+          ...(settingsWithoutDepth.prompts || {})
         }
       };
+      // Remove technical_depth from the JSONB settings object
+      delete updatedSettings.technical_depth;
+
+      // Build update payload
+      const updatePayload: Record<string, unknown> = {
+        settings: updatedSettings,
+        updated_at: new Date().toISOString()
+      };
+      if (technical_depth !== undefined) {
+        updatePayload.technical_depth = technical_depth;
+      }
 
       // Update in database
       const { data, error } = await this.supabase
         .from('vezlo_ai_settings')
-        .update({ 
-          settings: updatedSettings,
-          updated_at: new Date().toISOString()
-        })
+        .update(updatePayload)
         .eq('company_id', companyId)
-        .select('settings')
+        .select('settings, technical_depth')
         .single();
 
       if (error) {
@@ -125,7 +143,11 @@ export class AISettingsService {
       this.clearCache(companyUuid);
       logger.info(`✅ AI settings updated for company: ${companyUuid}`);
 
-      return data.settings as AISettings;
+      const result = data.settings as AISettings;
+      if (data.technical_depth != null) {
+        result.technical_depth = data.technical_depth;
+      }
+      return result;
     } catch (error) {
       logger.error('Error updating AI settings:', error);
       throw error;
